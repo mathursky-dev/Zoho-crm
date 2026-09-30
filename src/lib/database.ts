@@ -6,10 +6,39 @@ import {
   LeadStatus,
   Profile,
   StandardLeadStatus,
-  Followup
+  Followup,
+  FieldMasterItem,
+  ImportFieldMappingItem,
+  TransformRule,
+  FieldDataType
 } from '../types/crm';
 import { getSupabase, getSupabaseConfig } from './supabase';
 import * as XLSX from 'xlsx';
+
+// Transform Rule helper
+export function applyTransform(val: any, rule: TransformRule): any {
+  if (val === null || val === undefined) return '';
+  const str = String(val).trim();
+  switch (rule) {
+    case 'trim':
+      return str;
+    case 'digits_only':
+      return str.replace(/\D/g, '');
+    case 'uppercase':
+      return str.toUpperCase();
+    case 'lowercase':
+      return str.toLowerCase();
+    case 'titlecase':
+      return str.replace(/\w\S*/g, txt => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
+    case 'currency_to_number': {
+      const num = parseFloat(str.replace(/[^0-9.-]+/g, ''));
+      return isNaN(num) ? 0 : num;
+    }
+    case 'none':
+    default:
+      return val;
+  }
+}
 
 // Initial Seed Data
 const DEFAULT_DEPARTMENTS: Department[] = [
@@ -19,52 +48,75 @@ const DEFAULT_DEPARTMENTS: Department[] = [
   { id: 'dept-4', name: 'Personal Loans', code: 'PL', description: 'Instant unsecured personal credit', is_active: true, created_at: new Date(Date.now() - 30 * 86400000).toISOString() },
 ];
 
+export const ADMIN_UUID = 'a1000000-0000-4000-8000-000000000001';
+export const ALEX_UUID  = 'a1000000-0000-4000-8000-000000000002';
+export const PRIYA_UUID = 'a1000000-0000-4000-8000-000000000003';
+export const MARCUS_UUID = 'a1000000-0000-4000-8000-000000000004';
+
+// Helper to format currency in INR ₹
+export function formatINR(val: number | null | undefined): string {
+  if (val === null || val === undefined || isNaN(val)) return '₹0';
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0,
+  }).format(val);
+}
+
+// Generate standard UUID v4
+export function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 const DEFAULT_USERS: (Profile & { password?: string })[] = [
   {
-    id: 'user-admin',
+    id: ADMIN_UUID,
     email: 'admin@leadflow.com',
+    username: 'admin',
     full_name: 'Sarah Jenkins',
     role: 'admin',
-    department_id: 'dept-1',
-    department_name: 'Home Loans',
     is_active: true,
-    phone: '+1 555-0100',
+    phone: '+91 9876543201',
     password: 'admin123',
     created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
   },
   {
-    id: 'user-alex',
+    id: ALEX_UUID,
     email: 'alex@leadflow.com',
+    username: 'alex',
     full_name: 'Alex Rivera',
     role: 'telecaller',
-    department_id: 'dept-1',
-    department_name: 'Home Loans',
     is_active: true,
-    phone: '+1 555-0101',
+    phone: '+91 9876543202',
     password: 'alex123',
     created_at: new Date(Date.now() - 25 * 86400000).toISOString(),
   },
   {
-    id: 'user-priya',
+    id: PRIYA_UUID,
     email: 'priya@leadflow.com',
+    username: 'priya',
     full_name: 'Priya Sharma',
     role: 'telecaller',
-    department_id: 'dept-2',
-    department_name: 'Health Insurance',
     is_active: true,
-    phone: '+1 555-0102',
+    phone: '+91 9876543203',
     password: 'priya123',
     created_at: new Date(Date.now() - 20 * 86400000).toISOString(),
   },
   {
-    id: 'user-marcus',
+    id: MARCUS_UUID,
     email: 'marcus@leadflow.com',
+    username: 'marcus',
     full_name: 'Marcus Vance',
     role: 'telecaller',
-    department_id: 'dept-3',
-    department_name: 'Credit Cards',
     is_active: true,
-    phone: '+1 555-0103',
+    phone: '+91 9876543204',
     password: 'marcus123',
     created_at: new Date(Date.now() - 15 * 86400000).toISOString(),
   },
@@ -80,382 +132,382 @@ const DEFAULT_STATUSES: LeadStatus[] = [
   { id: 'st-7', name: 'Order Placed', color: '#10b981', is_active: true, display_order: 7, created_at: new Date().toISOString() },
   { id: 'st-8', name: 'Payment Pending', color: '#eab308', is_active: true, display_order: 8, created_at: new Date().toISOString() },
   { id: 'st-9', name: 'Money Problem', color: '#f97316', is_active: true, display_order: 9, created_at: new Date().toISOString() },
-  { id: 'st-10', name: 'No Answer', color: '#94a3b8', is_active: true, display_order: 10, created_at: new Date().toISOString() },
-  { id: 'st-11', name: 'Busy', color: '#a8a29e', is_active: true, display_order: 11, created_at: new Date().toISOString() },
-  { id: 'st-12', name: 'Not Interested', color: '#6b7280', is_active: true, display_order: 12, created_at: new Date().toISOString() },
-  { id: 'st-13', name: 'Wrong Number', color: '#dc2626', is_active: true, display_order: 13, created_at: new Date().toISOString() },
-  { id: 'st-14', name: 'Converted', color: '#059669', is_active: true, display_order: 14, created_at: new Date().toISOString() },
+  { id: 'st-10', name: 'Thinking/Discussing', color: '#6366f1', is_active: true, display_order: 10, created_at: new Date().toISOString() },
+  { id: 'st-11', name: 'No Answer', color: '#94a3b8', is_active: true, display_order: 11, created_at: new Date().toISOString() },
+  { id: 'st-12', name: 'Busy', color: '#a8a29e', is_active: true, display_order: 12, created_at: new Date().toISOString() },
+  { id: 'st-13', name: 'Switch Off/Unreachable', color: '#78716c', is_active: true, display_order: 13, created_at: new Date().toISOString() },
+  { id: 'st-14', name: 'Not Interested', color: '#6b7280', is_active: true, display_order: 14, created_at: new Date().toISOString() },
+  { id: 'st-15', name: 'Wrong Number', color: '#dc2626', is_active: true, display_order: 15, created_at: new Date().toISOString() },
+  { id: 'st-16', name: 'Duplicate', color: '#b91c1c', is_active: true, display_order: 16, created_at: new Date().toISOString() },
+  { id: 'st-17', name: 'Do Not Call', color: '#991b1b', is_active: true, display_order: 17, created_at: new Date().toISOString() },
+  { id: 'st-18', name: 'Converted/Completed', color: '#059669', is_active: true, display_order: 18, created_at: new Date().toISOString() },
 ];
 
-const today = new Date();
-const todayStr = today.toISOString().split('T')[0];
-const yesterday = new Date(Date.now() - 86400000);
-const yesterdayStr = yesterday.toISOString().split('T')[0];
+const DEFAULT_LEADS: Lead[] = [];
 
-const DEFAULT_LEADS: Lead[] = [
+const DEFAULT_ACTIVITIES: LeadActivity[] = [];
+
+const DEFAULT_ASSIGNMENTS: LeadAssignment[] = [];
+
+export const DEFAULT_FIELD_MASTER: FieldMasterItem[] = [
   {
-    id: 'lead-1',
-    lead_code: 'LD-1001',
-    customer_name: 'Robert Miller',
-    mobile: '9876543210',
-    alt_mobile: '9876543211',
-    city: 'New York',
-    state: 'NY',
-    department_id: 'dept-1',
-    department_name: 'Home Loans',
-    product: 'Fixed 30Y Mortgage',
-    amount: 350000,
-    source: 'Website Landing Page',
-    status: 'Untouched',
-    assigned_to: 'user-alex',
-    assigned_to_name: 'Alex Rivera',
-    remark: 'Inquired about first-time home buyer terms.',
-    followup_date: null,
-    callback_date: null,
-    created_at: new Date(Date.now() - 3 * 86400000).toISOString(),
-    assigned_at: new Date(Date.now() - 1 * 86400000).toISOString(),
-    last_activity_at: null,
+    id: 'fld-1',
+    field_key: 'customer_name',
+    field_label: 'Customer Name',
+    data_type: 'text',
+    is_required: true,
+    is_system: true,
+    is_active: true,
+    placeholder: 'e.g. Rajesh Kumar',
+    show_in_table: true,
+    show_in_form: true,
+    show_in_template: true,
+    display_order: 1,
+    created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
   },
   {
-    id: 'lead-2',
-    lead_code: 'LD-1002',
-    customer_name: 'Emily Davis',
-    mobile: '9123456789',
-    city: 'Austin',
-    state: 'TX',
-    department_id: 'dept-1',
-    department_name: 'Home Loans',
-    product: 'Home Refinance',
-    amount: 280000,
-    source: 'Google Ads',
-    status: 'Follow-up',
-    assigned_to: 'user-alex',
-    assigned_to_name: 'Alex Rivera',
-    remark: 'Requested rate comparison chart. Call back afternoon.',
-    followup_date: `${todayStr}T14:30:00.000Z`,
-    created_at: new Date(Date.now() - 5 * 86400000).toISOString(),
-    assigned_at: new Date(Date.now() - 4 * 86400000).toISOString(),
-    last_activity_at: new Date(Date.now() - 1 * 86400000).toISOString(),
+    id: 'fld-2',
+    field_key: 'mobile',
+    field_label: 'Mobile Number',
+    data_type: 'phone',
+    is_required: true,
+    is_system: true,
+    is_active: true,
+    placeholder: '10-digit mobile number',
+    show_in_table: true,
+    show_in_form: true,
+    show_in_template: true,
+    display_order: 2,
+    created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
   },
   {
-    id: 'lead-3',
-    lead_code: 'LD-1003',
-    customer_name: 'Michael Chen',
-    mobile: '9789012345',
-    city: 'San Francisco',
-    state: 'CA',
-    department_id: 'dept-1',
-    department_name: 'Home Loans',
-    product: 'Jumbo Loan',
-    amount: 850000,
-    source: 'Referral',
-    status: 'Hot Lead',
-    assigned_to: 'user-alex',
-    assigned_to_name: 'Alex Rivera',
-    remark: 'Very keen to close before month end. Documents submitted.',
-    followup_date: `${todayStr}T11:00:00.000Z`,
-    created_at: new Date(Date.now() - 4 * 86400000).toISOString(),
-    assigned_at: new Date(Date.now() - 3 * 86400000).toISOString(),
-    last_activity_at: new Date(Date.now() - 5 * 3600000).toISOString(),
+    id: 'fld-3',
+    field_key: 'alt_mobile',
+    field_label: 'Alternate Mobile',
+    data_type: 'phone',
+    is_required: false,
+    is_system: true,
+    is_active: true,
+    placeholder: 'Optional secondary phone',
+    show_in_table: true,
+    show_in_form: true,
+    show_in_template: true,
+    display_order: 3,
+    created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
   },
   {
-    id: 'lead-4',
-    lead_code: 'LD-1004',
-    customer_name: 'Sarah Connor',
-    mobile: '9456781230',
-    city: 'Seattle',
-    state: 'WA',
-    department_id: 'dept-1',
-    department_name: 'Home Loans',
-    product: 'Fixed 15Y Mortgage',
-    amount: 420000,
-    source: 'Excel Import',
-    status: 'Call Back',
-    assigned_to: 'user-alex',
-    assigned_to_name: 'Alex Rivera',
-    remark: 'Driving at the moment, asked to ring back at 5 PM.',
-    callback_date: `${todayStr}T17:00:00.000Z`,
-    created_at: new Date(Date.now() - 2 * 86400000).toISOString(),
-    assigned_at: new Date(Date.now() - 2 * 86400000).toISOString(),
-    last_activity_at: new Date(Date.now() - 2 * 3600000).toISOString(),
+    id: 'fld-4',
+    field_key: 'city',
+    field_label: 'City',
+    data_type: 'text',
+    is_required: false,
+    is_system: true,
+    is_active: true,
+    placeholder: 'e.g. Mumbai, New Delhi, Bengaluru',
+    show_in_table: true,
+    show_in_form: true,
+    show_in_template: true,
+    display_order: 4,
+    created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
   },
   {
-    id: 'lead-5',
-    lead_code: 'LD-1005',
-    customer_name: 'David Wilson',
-    mobile: '9654321870',
-    city: 'Chicago',
-    state: 'IL',
-    department_id: 'dept-1',
-    department_name: 'Home Loans',
-    product: 'Home Refinance',
-    amount: 195000,
-    source: 'Website Landing Page',
-    status: 'Follow-up',
-    assigned_to: 'user-alex',
-    assigned_to_name: 'Alex Rivera',
-    remark: 'Need to review bank statement.',
-    followup_date: `${yesterdayStr}T10:00:00.000Z`, // Overdue!
-    created_at: new Date(Date.now() - 6 * 86400000).toISOString(),
-    assigned_at: new Date(Date.now() - 5 * 86400000).toISOString(),
-    last_activity_at: new Date(Date.now() - 2 * 86400000).toISOString(),
+    id: 'fld-5',
+    field_key: 'state',
+    field_label: 'State',
+    data_type: 'text',
+    is_required: false,
+    is_system: true,
+    is_active: true,
+    placeholder: 'e.g. Maharashtra, Karnataka',
+    show_in_table: true,
+    show_in_form: true,
+    show_in_template: true,
+    display_order: 5,
+    created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
   },
   {
-    id: 'lead-6',
-    lead_code: 'LD-1006',
-    customer_name: 'Jessica Taylor',
-    mobile: '9321456780',
-    city: 'Denver',
-    state: 'CO',
-    department_id: 'dept-1',
-    department_name: 'Home Loans',
-    product: 'Home Loan Pre-approval',
-    amount: 310000,
-    source: 'Facebook Ad',
-    status: 'Order Placed',
-    assigned_to: 'user-alex',
-    assigned_to_name: 'Alex Rivera',
-    remark: 'Sanction letter issued. Application fee paid.',
-    order_amount: 310000,
-    order_product: 'Home Loan Pre-approval',
-    order_quantity: 1,
-    payment_status: 'Paid',
-    created_at: new Date(Date.now() - 10 * 86400000).toISOString(),
-    assigned_at: new Date(Date.now() - 9 * 86400000).toISOString(),
-    last_activity_at: new Date().toISOString(),
+    id: 'fld-6',
+    field_key: 'department',
+    field_label: 'Department',
+    data_type: 'select',
+    is_required: true,
+    is_system: true,
+    is_active: true,
+    placeholder: 'Assigned Department',
+    show_in_table: true,
+    show_in_form: true,
+    show_in_template: true,
+    display_order: 6,
+    created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
   },
   {
-    id: 'lead-7',
-    lead_code: 'LD-1007',
-    customer_name: 'Carlos Ruiz',
-    mobile: '9812345678',
-    city: 'Miami',
-    state: 'FL',
-    department_id: 'dept-1',
-    department_name: 'Home Loans',
-    product: 'Fixed 30Y Mortgage',
-    amount: 260000,
-    source: 'Referral',
-    status: 'Money Problem',
-    assigned_to: 'user-alex',
-    assigned_to_name: 'Alex Rivera',
-    remark: 'Down payment shortfall, exploring options with parents.',
-    created_at: new Date(Date.now() - 4 * 86400000).toISOString(),
-    assigned_at: new Date(Date.now() - 3 * 86400000).toISOString(),
-    last_activity_at: new Date(Date.now() - 1 * 86400000).toISOString(),
+    id: 'fld-7',
+    field_key: 'product',
+    field_label: 'Product',
+    data_type: 'text',
+    is_required: false,
+    is_system: true,
+    is_active: true,
+    placeholder: 'e.g. Home Loan, Health Shield',
+    show_in_table: true,
+    show_in_form: true,
+    show_in_template: true,
+    display_order: 7,
+    created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
   },
   {
-    id: 'lead-8',
-    lead_code: 'LD-1008',
-    customer_name: 'Ananya Gupta',
-    mobile: '9901234567',
-    city: 'Boston',
-    state: 'MA',
-    department_id: 'dept-2',
-    department_name: 'Health Insurance',
-    product: 'Family Floater Plan',
-    amount: 25000,
-    source: 'Website Landing Page',
-    status: 'Untouched',
-    assigned_to: 'user-priya',
-    assigned_to_name: 'Priya Sharma',
-    remark: 'Looking for cashless hospital coverage in Massachusetts.',
-    created_at: new Date(Date.now() - 1 * 86400000).toISOString(),
-    assigned_at: new Date().toISOString(),
-    last_activity_at: null,
+    id: 'fld-8',
+    field_key: 'amount',
+    field_label: 'Amount / Deal Value',
+    data_type: 'currency',
+    is_required: false,
+    is_system: true,
+    is_active: true,
+    placeholder: 'Estimated deal value in ₹',
+    show_in_table: true,
+    show_in_form: true,
+    show_in_template: true,
+    display_order: 8,
+    created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
   },
   {
-    id: 'lead-9',
-    lead_code: 'LD-1009',
-    customer_name: 'Brian O\'Connor',
-    mobile: '9834567890',
-    city: 'Dallas',
-    state: 'TX',
-    department_id: 'dept-2',
-    department_name: 'Health Insurance',
-    product: 'Critical Illness Rider',
-    amount: 18000,
-    source: 'Google Ads',
-    status: 'Interested',
-    assigned_to: 'user-priya',
-    assigned_to_name: 'Priya Sharma',
-    remark: 'Sent plan brochure on email. Customer satisfied with premium.',
-    followup_date: `${todayStr}T16:00:00.000Z`,
-    created_at: new Date(Date.now() - 3 * 86400000).toISOString(),
-    assigned_at: new Date(Date.now() - 2 * 86400000).toISOString(),
-    last_activity_at: new Date(Date.now() - 6 * 3600000).toISOString(),
+    id: 'fld-9',
+    field_key: 'source',
+    field_label: 'Lead Source',
+    data_type: 'select',
+    is_required: false,
+    is_system: true,
+    is_active: true,
+    placeholder: 'Inbound channel',
+    options: ['Website', 'Google Ads', 'Facebook Ads', 'IndiaMART', 'TradeIndia', 'Justdial', 'Referral', 'Excel Import'],
+    show_in_table: true,
+    show_in_form: true,
+    show_in_template: true,
+    display_order: 9,
+    created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
   },
   {
-    id: 'lead-10',
-    lead_code: 'LD-1010',
-    customer_name: 'Anita Roy',
-    mobile: '9123894567',
-    city: 'Atlanta',
-    state: 'GA',
-    department_id: 'dept-2',
-    department_name: 'Health Insurance',
-    product: 'Senior Citizen Health Cover',
-    amount: 32000,
-    source: 'Excel Import',
-    status: 'Order Placed',
-    assigned_to: 'user-priya',
-    assigned_to_name: 'Priya Sharma',
-    remark: 'Policy issued successfully. Payment received via online portal.',
-    order_amount: 32000,
-    order_product: 'Senior Citizen Health Cover',
-    order_quantity: 1,
-    payment_status: 'Paid',
-    created_at: new Date(Date.now() - 5 * 86400000).toISOString(),
-    assigned_at: new Date(Date.now() - 4 * 86400000).toISOString(),
-    last_activity_at: new Date().toISOString(),
+    id: 'fld-10',
+    field_key: 'previous_status',
+    field_label: 'Previous Status',
+    data_type: 'select',
+    is_required: false,
+    is_system: true,
+    is_active: true,
+    placeholder: 'Prior call disposition',
+    options: ['Untouched', 'Contacted', 'Interested', 'Follow-up', 'Call Back', 'Hot Lead', 'Order Placed', 'Not Interested'],
+    show_in_table: false,
+    show_in_form: true,
+    show_in_template: true,
+    display_order: 10,
+    created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
   },
   {
-    id: 'lead-11',
-    lead_code: 'LD-1011',
-    customer_name: 'Kevin Hart',
-    mobile: '9456123789',
-    city: 'Phoenix',
-    state: 'AZ',
-    department_id: 'dept-3',
-    department_name: 'Credit Cards',
-    product: 'Platinum Travel Card',
-    amount: 5000,
-    source: 'Website Landing Page',
-    status: 'Untouched',
-    assigned_to: 'user-marcus',
-    assigned_to_name: 'Marcus Vance',
-    remark: 'Wants zero foreign transaction fee card.',
-    created_at: new Date().toISOString(),
-    assigned_at: new Date().toISOString(),
-    last_activity_at: null,
+    id: 'fld-11',
+    field_key: 'remark',
+    field_label: 'Remark / Notes',
+    data_type: 'textarea',
+    is_required: false,
+    is_system: true,
+    is_active: true,
+    placeholder: 'Customer notes or specific requirement',
+    show_in_table: true,
+    show_in_form: true,
+    show_in_template: true,
+    display_order: 11,
+    created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
+  },
+  // Custom fields
+  {
+    id: 'fld-12',
+    field_key: 'pincode',
+    field_label: 'Pincode',
+    data_type: 'number',
+    is_required: false,
+    is_system: false,
+    is_active: true,
+    placeholder: '6-digit area PIN',
+    show_in_table: false,
+    show_in_form: true,
+    show_in_template: true,
+    display_order: 12,
+    created_at: new Date(Date.now() - 20 * 86400000).toISOString(),
   },
   {
-    id: 'lead-12',
-    lead_code: 'LD-1012',
-    customer_name: 'Samantha Lee',
-    mobile: '9678901234',
-    city: 'Portland',
-    state: 'OR',
-    department_id: 'dept-1',
-    department_name: 'Home Loans',
-    product: 'First Home Buyer Loan',
-    amount: 275000,
-    source: 'Excel Import',
-    status: 'Untouched',
-    assigned_to: null, // UNASSIGNED FOR ADMIN TESTING
-    assigned_to_name: null,
-    remark: 'Direct import from web registration list.',
-    created_at: new Date(Date.now() - 1 * 86400000).toISOString(),
-    assigned_at: null,
-    last_activity_at: null,
+    id: 'fld-13',
+    field_key: 'email',
+    field_label: 'Email Address',
+    data_type: 'email',
+    is_required: false,
+    is_system: false,
+    is_active: true,
+    placeholder: 'customer@example.com',
+    show_in_table: false,
+    show_in_form: true,
+    show_in_template: true,
+    display_order: 13,
+    created_at: new Date(Date.now() - 20 * 86400000).toISOString(),
   },
   {
-    id: 'lead-13',
-    lead_code: 'LD-1013',
-    customer_name: 'George Washington',
-    mobile: '9567890123',
-    city: 'Philadelphia',
-    state: 'PA',
-    department_id: 'dept-1',
-    department_name: 'Home Loans',
-    product: 'Refinance Plus',
-    amount: 340000,
-    source: 'Excel Import',
-    status: 'Untouched',
-    assigned_to: null, // UNASSIGNED
-    assigned_to_name: null,
-    remark: 'Imported batch. Needs phone verification.',
-    created_at: new Date(Date.now() - 1 * 86400000).toISOString(),
-    assigned_at: null,
-    last_activity_at: null,
-  },
-  {
-    id: 'lead-14',
-    lead_code: 'LD-1014',
-    customer_name: 'Pooja Patel',
-    mobile: '9845123456',
-    city: 'Houston',
-    state: 'TX',
-    department_id: 'dept-2',
-    department_name: 'Health Insurance',
-    product: 'Individual Mediclaim',
-    amount: 15000,
-    source: 'Excel Import',
-    status: 'Untouched',
-    assigned_to: null, // UNASSIGNED
-    assigned_to_name: null,
-    remark: 'Corporate employee seeking top-up cover.',
-    created_at: new Date().toISOString(),
-    assigned_at: null,
-    last_activity_at: null,
-  },
-  {
-    id: 'lead-15',
-    lead_code: 'LD-1015',
-    customer_name: 'Vikram Seth',
-    mobile: '9712348901',
-    city: 'San Jose',
-    state: 'CA',
-    department_id: 'dept-3',
-    department_name: 'Credit Cards',
-    product: 'Cashback Infinite Card',
-    amount: 0,
-    source: 'Excel Import',
-    status: 'Untouched',
-    assigned_to: null, // UNASSIGNED
-    assigned_to_name: null,
-    remark: 'Qualified applicant with 780+ credit score.',
-    created_at: new Date().toISOString(),
-    assigned_at: null,
-    last_activity_at: null,
+    id: 'fld-14',
+    field_key: 'annual_income',
+    field_label: 'Annual Income',
+    data_type: 'currency',
+    is_required: false,
+    is_system: false,
+    is_active: true,
+    placeholder: 'Applicant annual income',
+    show_in_table: false,
+    show_in_form: true,
+    show_in_template: false,
+    display_order: 14,
+    created_at: new Date(Date.now() - 15 * 86400000).toISOString(),
   }
 ];
 
-const DEFAULT_ACTIVITIES: LeadActivity[] = [
+export const DEFAULT_IMPORT_MAPPINGS: ImportFieldMappingItem[] = [
   {
-    id: 'act-1',
-    lead_id: 'lead-2',
-    user_id: 'user-alex',
-    user_name: 'Alex Rivera',
-    status: 'Follow-up',
-    remark: 'Discussed 30yr vs 15yr rates. Customer asked for formal quote.',
-    created_at: new Date(Date.now() - 1 * 86400000).toISOString(),
+    id: 'map-1',
+    field_key: 'customer_name',
+    target_field_label: 'Customer Name',
+    is_required: true,
+    aliases: ['Customer Name', 'customer_name', 'Name', 'Full Name', 'Customer', 'Client Name', 'Lead Name', 'Candidate Name', 'Buyer Name'],
+    transform_rule: 'titlecase',
+    is_active: true,
+    created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
   },
   {
-    id: 'act-2',
-    lead_id: 'lead-3',
-    user_id: 'user-alex',
-    user_name: 'Alex Rivera',
-    status: 'Contacted',
-    remark: 'Initial contact made. Verified property details and loan eligibility.',
-    created_at: new Date(Date.now() - 2 * 86400000).toISOString(),
+    id: 'map-2',
+    field_key: 'mobile',
+    target_field_label: 'Mobile Number',
+    is_required: true,
+    aliases: ['Mobile Number', 'mobile', 'Mobile', 'Phone', 'Phone Number', 'Contact', 'Contact Number', 'Mobile No', 'Cell Phone', 'WhatsApp Number', 'WhatsApp'],
+    transform_rule: 'digits_only',
+    is_active: true,
+    created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
   },
   {
-    id: 'act-3',
-    lead_id: 'lead-3',
-    user_id: 'user-alex',
-    user_name: 'Alex Rivera',
-    status: 'Hot Lead',
-    remark: 'Customer satisfied with 6.25% APR rate lock. Closing expedited.',
-    created_at: new Date(Date.now() - 5 * 3600000).toISOString(),
+    id: 'map-3',
+    field_key: 'alt_mobile',
+    target_field_label: 'Alternate Mobile',
+    is_required: false,
+    aliases: ['Alternate Mobile', 'alternate_mobile', 'alt_mobile', 'Alt Mobile', 'Alternate Phone', 'Secondary Phone', 'Alt Contact', 'Emergency Contact', 'Alt Phone'],
+    transform_rule: 'digits_only',
+    is_active: true,
+    created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
   },
   {
-    id: 'act-4',
-    lead_id: 'lead-6',
-    user_id: 'user-alex',
-    user_name: 'Alex Rivera',
-    status: 'Order Placed',
-    remark: 'Loan approved and accepted. Processing fees settled.',
-    created_at: new Date().toISOString(),
+    id: 'map-4',
+    field_key: 'city',
+    target_field_label: 'City',
+    is_required: false,
+    aliases: ['City', 'city', 'District', 'Town', 'Location', 'Current City', 'Customer City'],
+    transform_rule: 'titlecase',
+    is_active: true,
+    created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
   },
   {
-    id: 'act-5',
-    lead_id: 'lead-9',
-    user_id: 'user-priya',
-    user_name: 'Priya Sharma',
-    status: 'Interested',
-    remark: 'Email sent with policy wording and list of network hospitals.',
-    created_at: new Date(Date.now() - 6 * 3600000).toISOString(),
+    id: 'map-5',
+    field_key: 'state',
+    target_field_label: 'State',
+    is_required: false,
+    aliases: ['State', 'state', 'Province', 'Region', 'State/UT', 'State Code'],
+    transform_rule: 'titlecase',
+    is_active: true,
+    created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
+  },
+  {
+    id: 'map-6',
+    field_key: 'department',
+    target_field_label: 'Department',
+    is_required: true,
+    aliases: ['Department', 'department', 'Dept', 'Vertical', 'Division', 'Category', 'Branch'],
+    transform_rule: 'trim',
+    is_active: true,
+    created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
+  },
+  {
+    id: 'map-7',
+    field_key: 'product',
+    target_field_label: 'Product',
+    is_required: false,
+    aliases: ['Product', 'product', 'Product Name', 'Item', 'Course', 'Plan', 'Loan Type', 'Policy', 'Service', 'Requirement', 'Package'],
+    transform_rule: 'trim',
+    is_active: true,
+    created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
+  },
+  {
+    id: 'map-8',
+    field_key: 'amount',
+    target_field_label: 'Amount / Deal Value',
+    is_required: false,
+    aliases: ['Amount', 'amount', 'Deal Amount', 'Price', 'Value', 'Deal Value', 'Fee', 'Budget', 'Loan Amount', 'Sum Insured', 'Package Price'],
+    transform_rule: 'currency_to_number',
+    default_value: '0',
+    is_active: true,
+    created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
+  },
+  {
+    id: 'map-9',
+    field_key: 'source',
+    target_field_label: 'Lead Source',
+    is_required: false,
+    aliases: ['Source', 'source', 'Lead Source', 'Campaign', 'Platform', 'Channel', 'Vendor', 'Ad Name', 'Medium'],
+    transform_rule: 'trim',
+    default_value: 'Excel Import',
+    is_active: true,
+    created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
+  },
+  {
+    id: 'map-10',
+    field_key: 'previous_status',
+    target_field_label: 'Previous Status',
+    is_required: false,
+    aliases: ['Previous Status', 'previous_status', 'Old Status', 'Last Status', 'Disposition', 'Call Status', 'Status', 'Stage'],
+    transform_rule: 'trim',
+    is_active: true,
+    created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
+  },
+  {
+    id: 'map-11',
+    field_key: 'remark',
+    target_field_label: 'Remark / Notes',
+    is_required: false,
+    aliases: ['Remark', 'remark', 'Remarks', 'Notes', 'Comment', 'Comments', 'Customer Requirement', 'Feedback', 'Description'],
+    transform_rule: 'trim',
+    default_value: 'Imported via CSV/Excel',
+    is_active: true,
+    created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
+  },
+  {
+    id: 'map-12',
+    field_key: 'pincode',
+    target_field_label: 'Pincode',
+    is_required: false,
+    aliases: ['Pincode', 'pincode', 'PIN', 'Postal Code', 'Zip Code', 'Zip'],
+    transform_rule: 'digits_only',
+    is_active: true,
+    created_at: new Date(Date.now() - 20 * 86400000).toISOString(),
+  },
+  {
+    id: 'map-13',
+    field_key: 'email',
+    target_field_label: 'Email Address',
+    is_required: false,
+    aliases: ['Email', 'email', 'Email Address', 'Mail ID', 'E-mail', 'Contact Email'],
+    transform_rule: 'lowercase',
+    is_active: true,
+    created_at: new Date(Date.now() - 20 * 86400000).toISOString(),
+  },
+  {
+    id: 'map-14',
+    field_key: 'annual_income',
+    target_field_label: 'Annual Income',
+    is_required: false,
+    aliases: ['Annual Income', 'annual_income', 'Income', 'Salary', 'Monthly Salary', 'Turnover'],
+    transform_rule: 'currency_to_number',
+    is_active: true,
+    created_at: new Date(Date.now() - 15 * 86400000).toISOString(),
   }
 ];
 
@@ -486,6 +538,9 @@ export class DatabaseService {
   private statuses: LeadStatus[] = [];
   private leads: Lead[] = [];
   private activities: LeadActivity[] = [];
+  private leadAssignments: LeadAssignment[] = [];
+  private fieldMaster: FieldMasterItem[] = [];
+  private importFieldMappings: ImportFieldMappingItem[] = [];
   private currentUser: Profile | null = null;
 
   private constructor() {
@@ -500,11 +555,27 @@ export class DatabaseService {
   }
 
   private init() {
+    // Automatically purge old demo/mock data from browser localStorage
+    const DATA_VERSION = 'v5_all_data_removed_clean';
+    const currentVersion = localStorage.getItem('leadflow_data_version');
+    if (currentVersion !== DATA_VERSION) {
+      localStorage.removeItem('leadflow_leads');
+      localStorage.removeItem('leadflow_activities');
+      localStorage.removeItem('leadflow_lead_assignments');
+      setStorage('leads', []);
+      setStorage('activities', []);
+      setStorage('lead_assignments', []);
+      localStorage.setItem('leadflow_data_version', DATA_VERSION);
+    }
+
     this.departments = getStorage('departments', DEFAULT_DEPARTMENTS);
     this.users = getStorage('users', DEFAULT_USERS);
     this.statuses = getStorage('statuses', DEFAULT_STATUSES);
     this.leads = getStorage('leads', DEFAULT_LEADS);
     this.activities = getStorage('activities', DEFAULT_ACTIVITIES);
+    this.leadAssignments = getStorage('lead_assignments', DEFAULT_ASSIGNMENTS);
+    this.fieldMaster = getStorage('field_master', DEFAULT_FIELD_MASTER);
+    this.importFieldMappings = getStorage('import_field_mappings', DEFAULT_IMPORT_MAPPINGS);
 
     // Default logged in user: Admin Sarah Jenkins
     const savedUser = getStorage<Profile | null>('current_user', null);
@@ -513,6 +584,41 @@ export class DatabaseService {
     } else {
       this.currentUser = this.users[0]; // Admin by default for fast preview
       setStorage('current_user', this.currentUser);
+    }
+  }
+
+  // --- WIPE ALL DATA ---
+  public clearAllData(options?: { resetMasters?: boolean }) {
+    this.leads = [];
+    this.activities = [];
+    this.leadAssignments = [];
+    setStorage('leads', []);
+    setStorage('activities', []);
+    setStorage('lead_assignments', []);
+    localStorage.removeItem('leadflow_leads');
+    localStorage.removeItem('leadflow_activities');
+    localStorage.removeItem('leadflow_lead_assignments');
+
+    if (options?.resetMasters) {
+      this.departments = [...DEFAULT_DEPARTMENTS];
+      this.statuses = [...DEFAULT_STATUSES];
+      this.fieldMaster = [...DEFAULT_FIELD_MASTER];
+      this.importFieldMappings = [...DEFAULT_IMPORT_MAPPINGS];
+      setStorage('departments', this.departments);
+      setStorage('statuses', this.statuses);
+      setStorage('field_master', this.fieldMaster);
+      setStorage('import_field_mappings', this.importFieldMappings);
+    }
+
+    const supabase = getSupabase();
+    if (supabase) {
+      try {
+        supabase.from('leads').delete().neq('id', '00000000-0000-0000-0000-000000000000').then();
+        supabase.from('lead_activities').delete().neq('id', '00000000-0000-0000-0000-000000000000').then();
+        supabase.from('lead_assignments').delete().neq('id', '00000000-0000-0000-0000-000000000000').then();
+      } catch (err) {
+        console.warn('Error clearing Supabase remote data:', err);
+      }
     }
   }
 
@@ -623,33 +729,21 @@ export class DatabaseService {
 
   // --- USER MASTER ---
   public getUsers(includeInactive = false): Profile[] {
-    const list = includeInactive ? this.users : this.users.filter(u => u.is_active);
-    // Enrich department_name
-    return list.map(u => {
-      const dept = this.departments.find(d => d.id === u.department_id);
-      return {
-        ...u,
-        department_name: dept ? dept.name : u.department_name,
-      };
-    });
+    return includeInactive ? [...this.users] : this.users.filter(u => u.is_active);
   }
 
-  public getTelecallersByDepartment(departmentId?: string): Profile[] {
-    return this.getUsers(false).filter(u => {
-      if (u.role !== 'telecaller') return false;
-      if (!departmentId) return true;
-      return u.department_id === departmentId;
-    });
+  public getTelecallersByDepartment(_departmentId?: string): Profile[] {
+    // Requirement 2: Users must NOT belong to departments. Users are independent.
+    // Telecallers can be assigned leads from ANY department.
+    return this.getUsers(false).filter(u => u.role === 'telecaller');
   }
 
   public addUser(user: Omit<Profile, 'id' | 'created_at'> & { password?: string }): Profile {
     const newUser: Profile & { password?: string } = {
-      id: `user-${Date.now()}`,
+      id: generateUUID(),
       created_at: new Date().toISOString(),
       ...user,
     };
-    const dept = this.departments.find(d => d.id === newUser.department_id);
-    if (dept) newUser.department_name = dept.name;
 
     this.users.push(newUser);
     setStorage('users', this.users);
@@ -661,7 +755,6 @@ export class DatabaseService {
         email: newUser.email,
         full_name: newUser.full_name,
         role: newUser.role,
-        department_id: newUser.department_id,
         phone: newUser.phone,
         is_active: newUser.is_active,
       }]).then();
@@ -673,8 +766,6 @@ export class DatabaseService {
     const index = this.users.findIndex(u => u.id === id);
     if (index === -1) return null;
     this.users[index] = { ...this.users[index], ...updates };
-    const dept = this.departments.find(d => d.id === this.users[index].department_id);
-    if (dept) this.users[index].department_name = dept.name;
 
     setStorage('users', this.users);
 
@@ -720,6 +811,284 @@ export class DatabaseService {
     return this.statuses[index];
   }
 
+  // --- FIELD MASTER ---
+  public getFieldMaster(includeInactive = false): FieldMasterItem[] {
+    const list = includeInactive ? this.fieldMaster : this.fieldMaster.filter(f => f.is_active);
+    return list.sort((a, b) => a.display_order - b.display_order);
+  }
+
+  public getFieldByKey(fieldKey: string): FieldMasterItem | undefined {
+    return this.fieldMaster.find(f => f.field_key.toLowerCase() === fieldKey.toLowerCase());
+  }
+
+  public addField(field: Omit<FieldMasterItem, 'id' | 'created_at'>): FieldMasterItem {
+    const newField: FieldMasterItem = {
+      id: `fld-${Date.now()}`,
+      created_at: new Date().toISOString(),
+      ...field,
+    };
+    this.fieldMaster.push(newField);
+    setStorage('field_master', this.fieldMaster);
+
+    // Auto-create an Import Field Mapping for this new field
+    this.syncImportMappingsWithFieldMaster();
+
+    const supabase = getSupabase();
+    if (supabase) {
+      supabase.from('field_master').insert([newField]).then();
+    }
+    return newField;
+  }
+
+  public updateField(id: string, updates: Partial<FieldMasterItem>): FieldMasterItem | null {
+    const index = this.fieldMaster.findIndex(f => f.id === id);
+    if (index === -1) return null;
+
+    // Prevent changing field_key of system fields
+    if (this.fieldMaster[index].is_system && updates.field_key && updates.field_key !== this.fieldMaster[index].field_key) {
+      delete updates.field_key;
+    }
+
+    this.fieldMaster[index] = {
+      ...this.fieldMaster[index],
+      ...updates,
+      updated_at: new Date().toISOString(),
+    };
+    setStorage('field_master', this.fieldMaster);
+
+    // Sync label to import mapping if changed
+    if (updates.field_label) {
+      const mappingIdx = this.importFieldMappings.findIndex(m => m.field_key === this.fieldMaster[index].field_key);
+      if (mappingIdx !== -1) {
+        this.importFieldMappings[mappingIdx].target_field_label = updates.field_label;
+        setStorage('import_field_mappings', this.importFieldMappings);
+      }
+    }
+
+    const supabase = getSupabase();
+    if (supabase) {
+      supabase.from('field_master').update(updates).eq('id', id).then();
+    }
+    return this.fieldMaster[index];
+  }
+
+  public deleteField(id: string): { success: boolean; message?: string } {
+    const field = this.fieldMaster.find(f => f.id === id);
+    if (!field) return { success: false, message: 'Field not found' };
+    if (field.is_system) {
+      return { success: false, message: 'Standard system fields cannot be deleted. You can deactivate them instead.' };
+    }
+
+    this.fieldMaster = this.fieldMaster.filter(f => f.id !== id);
+    setStorage('field_master', this.fieldMaster);
+
+    // Also remove from import field mappings
+    this.importFieldMappings = this.importFieldMappings.filter(m => m.field_key !== field.field_key);
+    setStorage('import_field_mappings', this.importFieldMappings);
+
+    const supabase = getSupabase();
+    if (supabase) {
+      supabase.from('field_master').delete().eq('id', id).then();
+    }
+    return { success: true };
+  }
+
+  // --- IMPORT FILE FIELD MASTER ---
+  public getImportFieldMappings(includeInactive = false): ImportFieldMappingItem[] {
+    if (includeInactive) return [...this.importFieldMappings];
+    return this.importFieldMappings.filter(m => m.is_active);
+  }
+
+  public addImportFieldMapping(mapping: Omit<ImportFieldMappingItem, 'id' | 'created_at'>): ImportFieldMappingItem {
+    const newMapping: ImportFieldMappingItem = {
+      id: `map-${Date.now()}`,
+      created_at: new Date().toISOString(),
+      ...mapping,
+    };
+    this.importFieldMappings.push(newMapping);
+    setStorage('import_field_mappings', this.importFieldMappings);
+    return newMapping;
+  }
+
+  public updateImportFieldMapping(id: string, updates: Partial<ImportFieldMappingItem>): ImportFieldMappingItem | null {
+    const index = this.importFieldMappings.findIndex(m => m.id === id);
+    if (index === -1) return null;
+    this.importFieldMappings[index] = {
+      ...this.importFieldMappings[index],
+      ...updates,
+      updated_at: new Date().toISOString(),
+    };
+    setStorage('import_field_mappings', this.importFieldMappings);
+    return this.importFieldMappings[index];
+  }
+
+  public deleteImportFieldMapping(id: string): boolean {
+    const before = this.importFieldMappings.length;
+    this.importFieldMappings = this.importFieldMappings.filter(m => m.id !== id);
+    setStorage('import_field_mappings', this.importFieldMappings);
+    return this.importFieldMappings.length < before;
+  }
+
+  /**
+   * Matches any raw CSV/Excel column header against the configured Import Field Mappings
+   */
+  public autoMatchColumnHeader(headerName: string): string | null {
+    if (!headerName || !headerName.trim()) return null;
+    const cleanHeader = headerName.trim();
+    const normalized = cleanHeader.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    const activeMappings = this.importFieldMappings.filter(m => m.is_active);
+
+    // 1. Exact match on alias or field_key (case-insensitive)
+    for (const m of activeMappings) {
+      if (m.field_key.toLowerCase() === cleanHeader.toLowerCase()) return m.field_key;
+      if (m.target_field_label.toLowerCase() === cleanHeader.toLowerCase()) return m.field_key;
+      for (const alias of m.aliases) {
+        if (alias.toLowerCase() === cleanHeader.toLowerCase()) return m.field_key;
+      }
+    }
+
+    // 2. Normalized match (without spaces, punctuation, or casing)
+    for (const m of activeMappings) {
+      if (m.field_key.toLowerCase().replace(/[^a-z0-9]/g, '') === normalized) return m.field_key;
+      if (m.target_field_label.toLowerCase().replace(/[^a-z0-9]/g, '') === normalized) return m.field_key;
+      for (const alias of m.aliases) {
+        if (alias.toLowerCase().replace(/[^a-z0-9]/g, '') === normalized) return m.field_key;
+      }
+    }
+
+    // 3. Substring heuristic for common fields
+    for (const m of activeMappings) {
+      for (const alias of m.aliases) {
+        const normAlias = alias.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (normAlias.length >= 4 && (normalized.includes(normAlias) || normAlias.includes(normalized))) {
+          return m.field_key;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Synchronizes Import Field Mappings with all active fields in Field Master.
+   * Ensures any custom field added by the user has mapping rules.
+   */
+  public syncImportMappingsWithFieldMaster(): { added: number; total: number } {
+    let addedCount = 0;
+    this.fieldMaster.forEach(fld => {
+      const exists = this.importFieldMappings.some(m => m.field_key === fld.field_key);
+      if (!exists) {
+        const defaultTransform: TransformRule =
+          fld.data_type === 'phone' ? 'digits_only' :
+          fld.data_type === 'currency' ? 'currency_to_number' :
+          fld.data_type === 'email' ? 'lowercase' : 'trim';
+
+        const newMap: ImportFieldMappingItem = {
+          id: `map-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+          field_key: fld.field_key,
+          target_field_label: fld.field_label,
+          is_required: fld.is_required,
+          aliases: [fld.field_label, fld.field_key, fld.field_label.replace(/\s+/g, '')],
+          transform_rule: defaultTransform,
+          is_active: true,
+          created_at: new Date().toISOString(),
+        };
+        this.importFieldMappings.push(newMap);
+        addedCount++;
+      }
+    });
+
+    if (addedCount > 0) {
+      setStorage('import_field_mappings', this.importFieldMappings);
+    }
+    return { added: addedCount, total: this.importFieldMappings.length };
+  }
+
+  public resetMappingsToDefault(): void {
+    this.importFieldMappings = DEFAULT_IMPORT_MAPPINGS;
+    setStorage('import_field_mappings', this.importFieldMappings);
+  }
+
+  /**
+   * Generates a verified sample spreadsheet template containing all configured template columns.
+   */
+  public generateDynamicSampleTemplate(format: 'xlsx' | 'csv' = 'csv') {
+    const activeTemplateFields = this.fieldMaster.filter(f => f.is_active && f.show_in_template);
+    
+    // Create rich sample records with standard Indian CRM values
+    const row1: Record<string, any> = {};
+    const row2: Record<string, any> = {};
+
+    activeTemplateFields.forEach(f => {
+      const colName = f.field_label;
+      switch (f.field_key) {
+        case 'customer_name':
+          row1[colName] = 'Rajesh Kumar';
+          row2[colName] = 'Pooja Sharma';
+          break;
+        case 'mobile':
+          row1[colName] = '9876543210';
+          row2[colName] = '9812345678';
+          break;
+        case 'alt_mobile':
+          row1[colName] = '9876543211';
+          row2[colName] = '';
+          break;
+        case 'city':
+          row1[colName] = 'Mumbai';
+          row2[colName] = 'Bengaluru';
+          break;
+        case 'state':
+          row1[colName] = 'Maharashtra';
+          row2[colName] = 'Karnataka';
+          break;
+        case 'department':
+          row1[colName] = 'Home Loans';
+          row2[colName] = 'Health Insurance';
+          break;
+        case 'product':
+          row1[colName] = 'Fixed 30Y Mortgage';
+          row2[colName] = 'Family Health Shield';
+          break;
+        case 'amount':
+          row1[colName] = 3500000;
+          row2[colName] = 25000;
+          break;
+        case 'source':
+          row1[colName] = 'Website';
+          row2[colName] = 'Facebook Ad';
+          break;
+        case 'previous_status':
+          row1[colName] = 'Untouched';
+          row2[colName] = 'Interested';
+          break;
+        case 'remark':
+          row1[colName] = 'First time home buyer with high credit score';
+          row2[colName] = 'Requested cashless hospital network list';
+          break;
+        case 'pincode':
+          row1[colName] = '400001';
+          row2[colName] = '560001';
+          break;
+        case 'email':
+          row1[colName] = 'rajesh.kumar@example.com';
+          row2[colName] = 'pooja.sharma@example.com';
+          break;
+        case 'annual_income':
+          row1[colName] = 1200000;
+          row2[colName] = 850000;
+          break;
+        default:
+          row1[colName] = f.default_value || `Sample ${f.field_label}`;
+          row2[colName] = f.default_value || `Sample ${f.field_label}`;
+          break;
+      }
+    });
+
+    this.exportData([row1, row2], 'CRM_Leads_Import_Template', format);
+  }
+
   // --- LEADS & RLS ENFORCEMENT ---
   /**
    * Returns leads obeying strict RLS:
@@ -737,6 +1106,10 @@ export class DatabaseService {
     startDate?: string;
     endDate?: string;
     onlyUnassigned?: boolean;
+    assignment_status?: 'all' | 'assigned' | 'unassigned';
+    assigned_date_range?: 'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom';
+    assigned_start_date?: string;
+    assigned_end_date?: string;
   }): Lead[] {
     const user = this.getCurrentUser();
     let result = [...this.leads];
@@ -768,6 +1141,15 @@ export class DatabaseService {
       result = result.filter(l => !l.assigned_to);
     }
 
+    // Assignment Status Filter: all | assigned | unassigned
+    if (filters.assignment_status && filters.assignment_status !== 'all') {
+      if (filters.assignment_status === 'unassigned') {
+        result = result.filter(l => !l.assigned_to);
+      } else if (filters.assignment_status === 'assigned') {
+        result = result.filter(l => Boolean(l.assigned_to));
+      }
+    }
+
     // Department filter
     if (filters.department_id) {
       result = result.filter(l => l.department_id === filters.department_id);
@@ -797,7 +1179,7 @@ export class DatabaseService {
       result = result.filter(l => l.source === filters.source);
     }
 
-    // Date range filter
+    // Import / Created Date range filter
     if (filters.dateRange && filters.dateRange !== 'all') {
       const now = new Date();
       const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -821,6 +1203,39 @@ export class DatabaseService {
               const start = new Date(filters.startDate).getTime();
               const end = new Date(filters.endDate).getTime() + 86400000; // include end of day
               return leadTime >= start && leadTime <= end;
+            }
+            return true;
+          default:
+            return true;
+        }
+      });
+    }
+
+    // Assigned Date range filter
+    if (filters.assigned_date_range && filters.assigned_date_range !== 'all') {
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+      const yesterdayStart = todayStart - 86400000;
+      const weekStart = todayStart - 7 * 86400000;
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+
+      result = result.filter(l => {
+        if (!l.assigned_at) return false;
+        const asgnTime = new Date(l.assigned_at).getTime();
+        switch (filters.assigned_date_range) {
+          case 'today':
+            return asgnTime >= todayStart;
+          case 'yesterday':
+            return asgnTime >= yesterdayStart && asgnTime < todayStart;
+          case 'week':
+            return asgnTime >= weekStart;
+          case 'month':
+            return asgnTime >= monthStart;
+          case 'custom':
+            if (filters.assigned_start_date && filters.assigned_end_date) {
+              const start = new Date(filters.assigned_start_date).getTime();
+              const end = new Date(filters.assigned_end_date).getTime() + 86400000;
+              return asgnTime >= start && asgnTime <= end;
             }
             return true;
           default:
@@ -858,11 +1273,25 @@ export class DatabaseService {
 
     let count = 0;
     const now = new Date().toISOString();
+    const newAssignments: LeadAssignment[] = [];
 
     this.leads = this.leads.map(lead => {
       if (leadIds.includes(lead.id)) {
         count++;
-        // If it was untouched or unassigned, keep untouched until telecaller interacts
+        const previousUserId = lead.assigned_to || null;
+
+        // Requirement 7 & 8: Maintain complete assignment history audit log
+        newAssignments.push({
+          id: `asgn-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+          lead_id: lead.id,
+          previous_user_id: previousUserId,
+          assigned_to: targetUser.id,
+          assigned_by: user.id,
+          department_id: lead.department_id,
+          assigned_at: now,
+          created_at: now,
+        });
+
         return {
           ...lead,
           assigned_to: targetUser.id,
@@ -876,7 +1305,10 @@ export class DatabaseService {
 
     setStorage('leads', this.leads);
 
-    // Record activity / assignment log
+    this.leadAssignments = [...newAssignments, ...this.leadAssignments];
+    setStorage('lead_assignments', this.leadAssignments);
+
+    // Record activity log
     leadIds.forEach(id => {
       const act: LeadActivity = {
         id: `act-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
@@ -884,7 +1316,7 @@ export class DatabaseService {
         user_id: user.id,
         user_name: user.full_name,
         status: 'Assigned',
-        remark: `Lead assigned to ${targetUser.full_name} (${targetUser.department_name || 'General'}) by Admin`,
+        remark: `Lead assigned to ${targetUser.full_name} by Admin`,
         created_at: now,
       };
       this.activities.unshift(act);
@@ -893,30 +1325,107 @@ export class DatabaseService {
 
     const supabase = getSupabase();
     if (supabase) {
-      supabase.from('leads').update({
-        assigned_to: targetUser.id,
-        assigned_at: now,
-      }).in('id', leadIds).then();
+      // Requirement 5 standard logic
+      supabase
+        .from('leads')
+        .update({
+          assigned_to: targetUser.id,
+          assigned_at: now,
+        })
+        .in('id', leadIds)
+        .select()
+        .then();
+
+      supabase
+        .from('lead_assignments')
+        .insert(newAssignments.map(a => ({
+          lead_id: a.lead_id,
+          previous_user_id: a.previous_user_id,
+          assigned_to: a.assigned_to,
+          assigned_by: a.assigned_by,
+          department_id: a.department_id,
+          assigned_at: a.assigned_at,
+        })))
+        .then();
     }
 
     return { successCount: count, message: `Successfully assigned ${count} lead(s) to ${targetUser.full_name}.` };
+  }
+
+  // --- ASSIGNMENT HISTORY (AUDIT TRAIL) ---
+  public getLeadAssignments(leadId: string): (LeadAssignment & {
+    previous_user_name?: string;
+    assigned_to_name?: string;
+    assigned_by_name?: string;
+  })[] {
+    return this.leadAssignments
+      .filter(a => a.lead_id === leadId)
+      .map(a => {
+        const prevUser = a.previous_user_id ? this.users.find(u => u.id === a.previous_user_id) : null;
+        const targetUser = this.users.find(u => u.id === a.assigned_to);
+        const byUser = this.users.find(u => u.id === a.assigned_by);
+        return {
+          ...a,
+          previous_user_name: prevUser ? prevUser.full_name : (a.previous_user_id ? 'Previous User' : 'Unassigned / New Pool'),
+          assigned_to_name: targetUser ? targetUser.full_name : 'Unknown User',
+          assigned_by_name: byUser ? byUser.full_name : 'System / Admin',
+        };
+      })
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }
+
+  // --- ADMIN LEAD POOL SUMMARY & USER-WISE METRICS ---
+  public getAdminLeadPoolSummary() {
+    const totalLeads = this.leads.length;
+    const assignedLeads = this.leads.filter(l => Boolean(l.assigned_to)).length;
+    const unassignedLeads = totalLeads - assignedLeads;
+
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const todayEnd = todayStart + 86400000;
+
+    let assignedToday = 0;
+    this.leads.forEach(l => {
+      if (l.assigned_at) {
+        const t = new Date(l.assigned_at).getTime();
+        if (t >= todayStart && t < todayEnd) assignedToday++;
+      }
+    });
+
+    const activeTelecallers = this.users.filter(u => u.role === 'telecaller' && u.is_active);
+    const userStats = activeTelecallers.map(u => {
+      let count = 0;
+      let todayCount = 0;
+      this.leads.forEach(l => {
+        if (l.assigned_to === u.id) {
+          count++;
+          if (l.assigned_at) {
+            const t = new Date(l.assigned_at).getTime();
+            if (t >= todayStart && t < todayEnd) todayCount++;
+          }
+        }
+      });
+      return {
+        user: u,
+        assignedCount: count,
+        assignedTodayCount: todayCount,
+      };
+    });
+
+    return {
+      totalLeads,
+      unassignedLeads,
+      assignedLeads,
+      assignedToday,
+      userStats,
+    };
   }
 
   // --- EXCEL / CSV IMPORT ---
   public importLeads(
     rows: any[],
     departmentId: string,
-    columnMap: {
-      customer_name: string;
-      mobile: string;
-      alt_mobile?: string;
-      city?: string;
-      state?: string;
-      product?: string;
-      amount?: string;
-      source?: string;
-      remark?: string;
-    }
+    columnMap: Record<string, string>
   ): {
     totalRows: number;
     importedCount: number;
@@ -929,6 +1438,10 @@ export class DatabaseService {
     const duplicateMobiles: string[] = [];
     const newLeads: Lead[] = [];
 
+    // Map rules dictionary for fast lookup
+    const transformMap = new Map<string, TransformRule>();
+    this.importFieldMappings.forEach(m => transformMap.set(m.field_key, m.transform_rule));
+
     // Find highest current lead number
     let maxNumber = 1000;
     this.leads.forEach(l => {
@@ -938,49 +1451,128 @@ export class DatabaseService {
       }
     });
 
-    rows.forEach(row => {
-      const rawMobile = String(row[columnMap.mobile] || '').replace(/\D/g, '').trim();
-      const rawName = String(row[columnMap.customer_name] || '').trim();
+    const mobileCol = columnMap['mobile'] || columnMap['Mobile Number'] || '';
+    const nameCol = columnMap['customer_name'] || columnMap['Customer Name'] || '';
 
-      if (!rawMobile || !rawName) {
-        return; // skip empty required fields
+    rows.forEach(row => {
+      const rawMobileVal = mobileCol ? row[mobileCol] : '';
+      const rawNameVal = nameCol ? row[nameCol] : '';
+
+      const mobileRule = transformMap.get('mobile') || 'digits_only';
+      const cleanMobile = applyTransform(rawMobileVal, mobileRule);
+
+      const nameRule = transformMap.get('customer_name') || 'titlecase';
+      const cleanName = applyTransform(rawNameVal, nameRule);
+
+      if (!cleanMobile || !cleanName) {
+        return; // skip rows without required name & mobile
       }
 
       // Check duplicates
-      if (existingMobiles.has(rawMobile)) {
-        duplicateMobiles.push(rawMobile);
+      if (existingMobiles.has(cleanMobile)) {
+        duplicateMobiles.push(cleanMobile);
         return;
       }
-      existingMobiles.add(rawMobile);
+      existingMobiles.add(cleanMobile);
 
       maxNumber++;
       const leadCode = `LD-${maxNumber}`;
 
-      const rawAmount = columnMap.amount ? Number(row[columnMap.amount]) || 0 : 0;
-      const product = columnMap.product ? String(row[columnMap.product] || dept?.name || 'General Product') : (dept?.name || 'General Product');
-      const source = columnMap.source ? String(row[columnMap.source] || 'Excel Import') : 'Excel Import';
-      const city = columnMap.city ? String(row[columnMap.city] || '') : '';
-      const state = columnMap.state ? String(row[columnMap.state] || '') : '';
-      const alt_mobile = columnMap.alt_mobile ? String(row[columnMap.alt_mobile] || '').replace(/\D/g, '') : '';
-      const remark = columnMap.remark ? String(row[columnMap.remark] || '') : 'Imported via CSV/Excel';
+      // Alternate mobile
+      const altCol = columnMap['alt_mobile'] || columnMap['alternate_mobile'] || '';
+      const altRule = transformMap.get('alt_mobile') || 'digits_only';
+      const alt_mobile = altCol && row[altCol] ? applyTransform(row[altCol], altRule) : undefined;
+
+      // City & State
+      const cityCol = columnMap['city'] || '';
+      const cityRule = transformMap.get('city') || 'titlecase';
+      const city = cityCol && row[cityCol] ? applyTransform(row[cityCol], cityRule) : undefined;
+
+      const stateCol = columnMap['state'] || '';
+      const stateRule = transformMap.get('state') || 'titlecase';
+      const state = stateCol && row[stateCol] ? applyTransform(row[stateCol], stateRule) : undefined;
+
+      // Amount
+      const amtCol = columnMap['amount'] || '';
+      const amtRule = transformMap.get('amount') || 'currency_to_number';
+      const rawAmount = amtCol && row[amtCol] !== undefined ? applyTransform(row[amtCol], amtRule) : 0;
+      const amount = typeof rawAmount === 'number' ? rawAmount : (parseFloat(rawAmount) || 0);
+
+      // Product
+      const prodCol = columnMap['product'] || '';
+      const prodRule = transformMap.get('product') || 'trim';
+      const product = prodCol && row[prodCol]
+        ? applyTransform(row[prodCol], prodRule)
+        : (dept?.name || 'General Product');
+
+      // Source
+      const srcCol = columnMap['source'] || '';
+      const srcRule = transformMap.get('source') || 'trim';
+      const source = srcCol && row[srcCol]
+        ? applyTransform(row[srcCol], srcRule)
+        : 'Excel Import';
+
+      // Remark
+      const remCol = columnMap['remark'] || '';
+      const remRule = transformMap.get('remark') || 'trim';
+      const remark = remCol && row[remCol]
+        ? applyTransform(row[remCol], remRule)
+        : 'Imported via CSV/Excel';
+
+      // Department resolution
+      let assignedDeptId = departmentId;
+      let assignedDeptName = dept?.name || 'General';
+      const deptCol = columnMap['department'] || '';
+      if (deptCol && row[deptCol]) {
+        const fileDeptVal = String(row[deptCol]).trim().toLowerCase();
+        const matchedDept = this.departments.find(
+          d => d.name.toLowerCase() === fileDeptVal || d.code.toLowerCase() === fileDeptVal
+        );
+        if (matchedDept) {
+          assignedDeptId = matchedDept.id;
+          assignedDeptName = matchedDept.name;
+        }
+      }
+
+      // Status resolution
+      let initialStatus = 'Untouched';
+      const prevStatusCol = columnMap['previous_status'] || '';
+      if (prevStatusCol && row[prevStatusCol]) {
+        const rawStat = String(row[prevStatusCol]).trim();
+        if (rawStat) initialStatus = rawStat;
+      }
+
+      // Custom fields extraction
+      const custom_fields: Record<string, any> = {};
+      Object.entries(columnMap).forEach(([fKey, colHeader]) => {
+        if (
+          !['customer_name', 'mobile', 'alt_mobile', 'city', 'state', 'department', 'product', 'amount', 'source', 'previous_status', 'remark'].includes(fKey) &&
+          colHeader &&
+          row[colHeader] !== undefined
+        ) {
+          const rule = transformMap.get(fKey) || 'trim';
+          custom_fields[fKey] = applyTransform(row[colHeader], rule);
+        }
+      });
 
       const lead: Lead = {
         id: `lead-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
         lead_code: leadCode,
-        customer_name: rawName,
-        mobile: rawMobile,
+        customer_name: cleanName,
+        mobile: cleanMobile,
         alt_mobile: alt_mobile || undefined,
         city: city || undefined,
         state: state || undefined,
-        department_id: departmentId,
-        department_name: dept ? dept.name : 'General',
+        department_id: assignedDeptId,
+        department_name: assignedDeptName,
         product,
-        amount: rawAmount,
+        amount,
         source,
-        status: 'Untouched',
+        status: initialStatus,
         assigned_to: null, // Imported as Unassigned Leads per specification!
         assigned_to_name: null,
         remark,
+        custom_fields: Object.keys(custom_fields).length > 0 ? custom_fields : undefined,
         created_at: new Date().toISOString(),
         assigned_at: null,
         last_activity_at: null,
@@ -1357,6 +1949,9 @@ export class DatabaseService {
     localStorage.removeItem('leadflow_statuses');
     localStorage.removeItem('leadflow_leads');
     localStorage.removeItem('leadflow_activities');
+    localStorage.removeItem('leadflow_lead_assignments');
+    localStorage.removeItem('leadflow_field_master');
+    localStorage.removeItem('leadflow_import_field_mappings');
     this.init();
   }
 }

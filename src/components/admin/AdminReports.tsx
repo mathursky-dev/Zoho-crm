@@ -60,7 +60,7 @@ export const AdminReports: React.FC = () => {
 
         return {
           'Telecaller Name': u.full_name,
-          'Department': u.department_name || 'General',
+          'Role': 'Telecaller',
           'Assigned Leads': userLeads.length,
           'Worked Leads': worked,
           'Untouched Leads': untouched,
@@ -262,7 +262,7 @@ export const AdminReports: React.FC = () => {
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[11px]">
                 <th className="p-3">Telecaller Name</th>
-                <th className="p-3">Department</th>
+                <th className="p-3">Role</th>
                 <th className="p-3">Assigned Leads</th>
                 <th className="p-3">Worked</th>
                 <th className="p-3">Untouched</th>
@@ -285,7 +285,7 @@ export const AdminReports: React.FC = () => {
                 return (
                   <tr key={u.id} className="hover:bg-slate-50/70">
                     <td className="p-3 font-bold text-slate-900">{u.full_name}</td>
-                    <td className="p-3 text-slate-600">{u.department_name || 'General'}</td>
+                    <td className="p-3 text-slate-600">Telecaller</td>
                     <td className="p-3 font-bold text-slate-800">{uLeads.length}</td>
                     <td className="p-3 text-blue-700 font-semibold">{worked}</td>
                     <td className="p-3 text-amber-700 font-semibold">{untouched}</td>

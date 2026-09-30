@@ -96,28 +96,18 @@ CREATE TABLE IF NOT EXISTS public.departments (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 3. Profiles (Users) Table linked to Supabase Auth
+-- 3. Profiles (Users) Table linked to Supabase Auth (Users DO NOT belong to Departments)
 CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT NOT NULL,
   full_name TEXT NOT NULL,
   role TEXT NOT NULL CHECK (role IN ('admin', 'telecaller')),
-  department_id UUID REFERENCES public.departments(id) ON DELETE SET NULL,
   phone TEXT,
   is_active BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 4. User Departments (Multi-department or mapping)
-CREATE TABLE IF NOT EXISTS public.user_departments (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  department_id UUID NOT NULL REFERENCES public.departments(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE(user_id, department_id)
-);
-
--- 5. Lead Statuses Master
+-- 4. Lead Statuses Master (All 18 Standard Dispositions)
 CREATE TABLE IF NOT EXISTS public.lead_statuses (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name TEXT NOT NULL UNIQUE,
@@ -170,13 +160,15 @@ CREATE TABLE IF NOT EXISTS public.lead_activities (
 CREATE TABLE IF NOT EXISTS public.lead_assignments (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   lead_id UUID NOT NULL REFERENCES public.leads(id) ON DELETE CASCADE,
-  assigned_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  previous_user_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
   assigned_to UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  assigned_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
   department_id UUID REFERENCES public.departments(id) ON DELETE SET NULL,
+  assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 9. Followups Table
+-- 8. Followups Table
 CREATE TABLE IF NOT EXISTS public.followups (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   lead_id UUID NOT NULL REFERENCES public.leads(id) ON DELETE CASCADE,
@@ -195,7 +187,6 @@ CREATE TABLE IF NOT EXISTS public.followups (
 -- Enable RLS on all tables
 ALTER TABLE public.departments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.user_departments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.lead_statuses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.leads ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.lead_activities ENABLE ROW LEVEL SECURITY;
@@ -270,7 +261,7 @@ CREATE POLICY "Telecallers access own followups" ON public.followups
 CREATE POLICY "Admins access lead_assignments" ON public.lead_assignments
   FOR ALL USING (public.is_admin());
 
--- Seed Default Statuses
+-- Seed All 18 Standard Statuses
 INSERT INTO public.lead_statuses (name, color, display_order)
 VALUES
   ('Untouched', '#64748b', 1),
@@ -282,10 +273,14 @@ VALUES
   ('Order Placed', '#10b981', 7),
   ('Payment Pending', '#eab308', 8),
   ('Money Problem', '#f97316', 9),
-  ('No Answer', '#94a3b8', 10),
-  ('Busy', '#a8a29e', 11),
-  ('Not Interested', '#6b7280', 12),
-  ('Wrong Number', '#dc2626', 13),
-  ('Converted', '#059669', 14)
+  ('Thinking/Discussing', '#6366f1', 10),
+  ('No Answer', '#94a3b8', 11),
+  ('Busy', '#a8a29e', 12),
+  ('Switch Off/Unreachable', '#78716c', 13),
+  ('Not Interested', '#6b7280', 14),
+  ('Wrong Number', '#dc2626', 15),
+  ('Duplicate', '#b91c1c', 16),
+  ('Do Not Call', '#991b1b', 17),
+  ('Converted/Completed', '#059669', 18)
 ON CONFLICT (name) DO NOTHING;
 `;

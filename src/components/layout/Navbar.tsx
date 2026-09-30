@@ -15,6 +15,7 @@ import {
   Phone,
   Tag,
   CheckCircle2,
+  Trash2,
 } from 'lucide-react';
 
 interface Props {
@@ -25,6 +26,7 @@ interface Props {
   onGlobalSearchSelect: (leadId: string) => void;
   onToggleSidebar?: () => void;
   sidebarOpen?: boolean;
+  onOpenWipeData?: () => void;
 }
 
 export const Navbar: React.FC<Props> = ({
@@ -35,6 +37,7 @@ export const Navbar: React.FC<Props> = ({
   onGlobalSearchSelect,
   onToggleSidebar,
   sidebarOpen,
+  onOpenWipeData,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showSearchResults, setShowSearchResults] = useState(false);
@@ -204,7 +207,7 @@ export const Navbar: React.FC<Props> = ({
                   {currentUser.full_name}
                 </div>
                 <div className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">
-                  {currentUser.role === 'admin' ? 'Administrator' : `Telecaller (${currentUser.department_name || 'General'})`}
+                  {currentUser.role === 'admin' ? 'Administrator' : 'Telecaller / Staff'}
                 </div>
               </div>
               <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
@@ -249,7 +252,7 @@ export const Navbar: React.FC<Props> = ({
                           <div>
                             <div className="font-medium">{u.full_name}</div>
                             <div className="text-[10px] text-slate-400 capitalize">
-                              {u.role} · {u.department_name || 'General'}
+                              {u.role === 'admin' ? 'Administrator' : 'Telecaller'}
                             </div>
                           </div>
                           {isCurrent && <CheckCircle2 className="w-4 h-4 text-blue-600" />}
@@ -259,10 +262,23 @@ export const Navbar: React.FC<Props> = ({
                   </div>
                 </div>
 
-                <div className="p-2">
+                <div className="p-2 space-y-1">
+                  {onOpenWipeData && currentUser.role === 'admin' && (
+                    <button
+                      onClick={() => {
+                        setShowUserDropdown(false);
+                        onOpenWipeData();
+                      }}
+                      className="w-full p-2 text-left text-xs text-rose-600 hover:bg-rose-50 rounded-lg flex items-center space-x-2 font-medium transition-colors"
+                      title="Permanently remove all CRM data and leads"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Remove All CRM Data</span>
+                    </button>
+                  )}
                   <button
                     onClick={handleLogout}
-                    className="w-full p-2 text-left text-xs text-rose-600 hover:bg-rose-50 rounded-lg flex items-center space-x-2 font-medium transition-colors"
+                    className="w-full p-2 text-left text-xs text-slate-600 hover:bg-slate-50 rounded-lg flex items-center space-x-2 font-medium transition-colors"
                   >
                     <LogOut className="w-3.5 h-3.5" />
                     <span>Sign Out / Switch Account</span>

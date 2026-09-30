@@ -12,6 +12,9 @@ import {
   Check,
   RefreshCw,
   HelpCircle,
+  Sliders,
+  TableProperties,
+  Sparkles,
 } from 'lucide-react';
 import { AdminView } from '../layout/Sidebar';
 
@@ -21,24 +24,15 @@ interface Props {
 
 export const LeadImport: React.FC<Props> = ({ onNavigate }) => {
   const departments = db.getDepartments();
+  const activeFields = db.getFieldMaster(false);
 
   const [file, setFile] = useState<File | null>(null);
   const [parsedData, setParsedData] = useState<any[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
   const [selectedDeptId, setSelectedDeptId] = useState(departments[0]?.id || '');
 
-  // Column Mapping
-  const [mapping, setMapping] = useState({
-    customer_name: '',
-    mobile: '',
-    alt_mobile: '',
-    city: '',
-    state: '',
-    product: '',
-    amount: '',
-    source: '',
-    remark: '',
-  });
+  // Dynamic Column Mapping: field_key -> selected Excel column name
+  const [mapping, setMapping] = useState<Record<string, string>>({});
 
   const [duplicateMobiles, setDuplicateMobiles] = useState<string[]>([]);
   const [importResult, setImportResult] = useState<{
@@ -81,39 +75,12 @@ export const LeadImport: React.FC<Props> = ({ onNavigate }) => {
           setColumns(headerRow);
           setParsedData(rows);
 
-          // Auto-mapping heuristics
-          const initialMap: any = {
-            customer_name: '',
-            mobile: '',
-            alt_mobile: '',
-            city: '',
-            state: '',
-            product: '',
-            amount: '',
-            source: '',
-            remark: '',
-          };
-
+          // Smart auto-mapping using Import File Field Master rules!
+          const initialMap: Record<string, string> = {};
           headerRow.forEach(col => {
-            const lower = col.toLowerCase().replace(/[^a-z0-9]/g, '');
-            if (lower.includes('name') || lower.includes('customer') || lower.includes('client')) {
-              if (!initialMap.customer_name) initialMap.customer_name = col;
-            } else if (lower.includes('altphone') || lower.includes('altmobile') || lower.includes('secondary')) {
-              if (!initialMap.alt_mobile) initialMap.alt_mobile = col;
-            } else if (lower.includes('mobile') || lower.includes('phone') || lower.includes('contact') || lower.includes('cell')) {
-              if (!initialMap.mobile) initialMap.mobile = col;
-            } else if (lower.includes('city') || lower.includes('location')) {
-              if (!initialMap.city) initialMap.city = col;
-            } else if (lower.includes('state') || lower.includes('province')) {
-              if (!initialMap.state) initialMap.state = col;
-            } else if (lower.includes('product') || lower.includes('plan') || lower.includes('service') || lower.includes('loan')) {
-              if (!initialMap.product) initialMap.product = col;
-            } else if (lower.includes('amount') || lower.includes('value') || lower.includes('price')) {
-              if (!initialMap.amount) initialMap.amount = col;
-            } else if (lower.includes('source') || lower.includes('campaign') || lower.includes('channel')) {
-              if (!initialMap.source) initialMap.source = col;
-            } else if (lower.includes('remark') || lower.includes('note') || lower.includes('comment')) {
-              if (!initialMap.remark) initialMap.remark = col;
+            const matchedKey = db.autoMatchColumnHeader(col);
+            if (matchedKey && !initialMap[matchedKey]) {
+              initialMap[matchedKey] = col;
             }
           });
 
@@ -177,43 +144,7 @@ export const LeadImport: React.FC<Props> = ({ onNavigate }) => {
   };
 
   const handleDownloadSample = () => {
-    const sample = [
-      {
-        'Customer Name': 'Jonathan Doe',
-        'Mobile Number': '9811223344',
-        'Alternate Mobile': '9811223345',
-        'City': 'Miami',
-        'State': 'FL',
-        'Product': 'Home Purchase Loan',
-        'Deal Amount': 320000,
-        'Source': 'Web Portal',
-        'Remark': 'Interested in low down-payment options',
-      },
-      {
-        'Customer Name': 'Maria Gonzalez',
-        'Mobile Number': '9822334455',
-        'Alternate Mobile': '',
-        'City': 'Orlando',
-        'State': 'FL',
-        'Product': 'Health Shield Plan',
-        'Deal Amount': 22000,
-        'Source': 'Facebook Ad',
-        'Remark': 'Requested brochure on family floater',
-      },
-      {
-        'Customer Name': 'David Beckham',
-        'Mobile Number': '9833445566',
-        'Alternate Mobile': '',
-        'City': 'Tampa',
-        'State': 'FL',
-        'Product': 'Platinum Cashback Card',
-        'Deal Amount': 5000,
-        'Source': 'Google Search',
-        'Remark': 'Credit score verified 750+',
-      },
-    ];
-
-    db.exportData(sample, 'Sample_Leads_Template', 'csv');
+    db.generateDynamicSampleTemplate('csv');
   };
 
   return (
@@ -226,13 +157,29 @@ export const LeadImport: React.FC<Props> = ({ onNavigate }) => {
             Upload file → Preview → Select Department → Map Columns → Detect Duplicates → Import as Unassigned Leads
           </p>
         </div>
-        <button
-          onClick={handleDownloadSample}
-          className="inline-flex items-center space-x-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-colors border border-slate-300"
-        >
-          <Download className="w-3.5 h-3.5" />
-          <span>Download Sample CSV</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => onNavigate('field-master')}
+            className="inline-flex items-center space-x-1.5 px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg transition-colors border border-slate-300 shadow-2xs"
+          >
+            <Sliders className="w-3.5 h-3.5 text-blue-600" />
+            <span>Field Master</span>
+          </button>
+          <button
+            onClick={() => onNavigate('import-field-master')}
+            className="inline-flex items-center space-x-1.5 px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg transition-colors border border-slate-300 shadow-2xs"
+          >
+            <TableProperties className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Import Field Master</span>
+          </button>
+          <button
+            onClick={handleDownloadSample}
+            className="inline-flex items-center space-x-1.5 px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg transition-colors shadow-2xs"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Download Sample CSV</span>
+          </button>
+        </div>
       </div>
 
       {/* STEP 1: UPLOAD */}
@@ -338,150 +285,93 @@ export const LeadImport: React.FC<Props> = ({ onNavigate }) => {
 
           {/* Column Mapping Form */}
           <div className="space-y-4">
-            <h3 className="text-xs font-bold uppercase text-slate-700 tracking-wider">
-              Map Spreadsheet Columns
-            </h3>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2">
+              <div>
+                <h3 className="text-xs font-bold uppercase text-slate-700 tracking-wider flex items-center space-x-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Map Spreadsheet Columns ({activeFields.length} CRM Fields)</span>
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  Headers have been auto-matched using rules from the Import File Field Master.
+                </p>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={() => onNavigate('import-field-master')}
+                  className="inline-flex items-center space-x-1 text-xs text-indigo-600 hover:text-indigo-800 font-semibold"
+                >
+                  <TableProperties className="w-3.5 h-3.5" />
+                  <span>Configure Aliases</span>
+                </button>
+                <span className="text-slate-300">|</span>
+                <button
+                  type="button"
+                  onClick={() => onNavigate('field-master')}
+                  className="inline-flex items-center space-x-1 text-xs text-blue-600 hover:text-blue-800 font-semibold"
+                >
+                  <Sliders className="w-3.5 h-3.5" />
+                  <span>Field Master</span>
+                </button>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-              {/* Customer Name */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Customer Name <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={mapping.customer_name}
-                  onChange={e => setMapping({ ...mapping, customer_name: e.target.value })}
-                  className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
-                >
-                  <option value="">-- Select Column --</option>
-                  {columns.map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </div>
+              {activeFields.map(field => {
+                const isMapped = Boolean(mapping[field.field_key]);
+                return (
+                  <div
+                    key={field.id}
+                    className={`p-3 rounded-xl border transition-all ${
+                      isMapped
+                        ? 'bg-blue-50/40 border-blue-200'
+                        : field.is_required
+                        ? 'bg-amber-50/40 border-amber-200'
+                        : 'bg-slate-50/50 border-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-bold text-slate-800 flex items-center space-x-1">
+                        <span>{field.field_label}</span>
+                        {field.is_required && <span className="text-red-500">*</span>}
+                      </label>
+                      {isMapped ? (
+                        <span className="inline-flex items-center space-x-0.5 text-[10px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded-full">
+                          <Check className="w-2.5 h-2.5" />
+                          <span>Matched</span>
+                        </span>
+                      ) : field.is_required ? (
+                        <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.2 rounded-full">
+                          Required
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-slate-400">Optional</span>
+                      )}
+                    </div>
 
-              {/* Mobile */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Mobile Number <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={mapping.mobile}
-                  onChange={e => handleMobileColChange(e.target.value)}
-                  className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
-                >
-                  <option value="">-- Select Column --</option>
-                  {columns.map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Alt Mobile */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Alternate Mobile
-                </label>
-                <select
-                  value={mapping.alt_mobile}
-                  onChange={e => setMapping({ ...mapping, alt_mobile: e.target.value })}
-                  className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
-                >
-                  <option value="">-- Optional --</option>
-                  {columns.map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* City */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">City</label>
-                <select
-                  value={mapping.city}
-                  onChange={e => setMapping({ ...mapping, city: e.target.value })}
-                  className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
-                >
-                  <option value="">-- Optional --</option>
-                  {columns.map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* State */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">State</label>
-                <select
-                  value={mapping.state}
-                  onChange={e => setMapping({ ...mapping, state: e.target.value })}
-                  className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
-                >
-                  <option value="">-- Optional --</option>
-                  {columns.map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Product */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Product</label>
-                <select
-                  value={mapping.product}
-                  onChange={e => setMapping({ ...mapping, product: e.target.value })}
-                  className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
-                >
-                  <option value="">-- Optional (Uses Dept Name) --</option>
-                  {columns.map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Amount */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Deal Amount</label>
-                <select
-                  value={mapping.amount}
-                  onChange={e => setMapping({ ...mapping, amount: e.target.value })}
-                  className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
-                >
-                  <option value="">-- Optional --</option>
-                  {columns.map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Source */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Lead Source</label>
-                <select
-                  value={mapping.source}
-                  onChange={e => setMapping({ ...mapping, source: e.target.value })}
-                  className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
-                >
-                  <option value="">-- Optional (Default: Excel Import) --</option>
-                  {columns.map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Remark */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Initial Remark</label>
-                <select
-                  value={mapping.remark}
-                  onChange={e => setMapping({ ...mapping, remark: e.target.value })}
-                  className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
-                >
-                  <option value="">-- Optional --</option>
-                  {columns.map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </div>
+                    <select
+                      value={mapping[field.field_key] || ''}
+                      onChange={e => {
+                        const val = e.target.value;
+                        if (field.field_key === 'mobile') {
+                          handleMobileColChange(val);
+                        } else {
+                          setMapping(prev => ({ ...prev, [field.field_key]: val }));
+                        }
+                      }}
+                      className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-medium"
+                    >
+                      <option value="">-- {field.is_required ? 'Select Required Column' : 'Not Mapped'} --</option>
+                      {columns.map(c => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                );
+              })}
             </div>
           </div>
 

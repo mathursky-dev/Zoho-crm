@@ -53,7 +53,7 @@ export const TelecallerDashboard: React.FC<Props> = ({
         <div>
           <div className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 text-[11px] font-semibold mb-2 border border-blue-400/30">
             <Sparkles className="w-3 h-3 text-blue-400" />
-            <span>Telecaller Calling Station · {user.department_name || 'General'}</span>
+            <span>Telecaller Calling Station · Active</span>
           </div>
           <h1 className="text-xl sm:text-2xl font-black tracking-tight">
             Welcome back, {user.full_name}

@@ -13,6 +13,8 @@ import {
   PhoneCall,
   CalendarClock,
   Briefcase,
+  Sliders,
+  TableProperties,
 } from 'lucide-react';
 
 export type AdminView =
@@ -23,6 +25,8 @@ export type AdminView =
   | 'departments'
   | 'users'
   | 'statuses'
+  | 'field-master'
+  | 'import-field-master'
   | 'reports';
 
 export type TelecallerView =
@@ -56,6 +60,8 @@ export const Sidebar: React.FC<Props> = ({
     { id: 'departments', label: 'Departments', icon: Building2 },
     { id: 'users', label: 'Users', icon: UserCog },
     { id: 'statuses', label: 'Status Master', icon: Tags },
+    { id: 'field-master', label: 'Field Master', icon: Sliders },
+    { id: 'import-field-master', label: 'Import Field Master', icon: TableProperties },
     { id: 'reports', label: 'Reports', icon: BarChart3 },
   ];
 

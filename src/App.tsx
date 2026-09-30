@@ -10,6 +10,8 @@ import { ManualAssignment } from './components/admin/ManualAssignment';
 import { DepartmentMaster } from './components/admin/DepartmentMaster';
 import { UserMaster } from './components/admin/UserMaster';
 import { StatusMaster } from './components/admin/StatusMaster';
+import { FieldMaster } from './components/admin/FieldMaster';
+import { ImportFieldMaster } from './components/admin/ImportFieldMaster';
 import { AdminReports } from './components/admin/AdminReports';
 import { TelecallerDashboard } from './components/telecaller/TelecallerDashboard';
 import { MyLeads } from './components/telecaller/MyLeads';
@@ -20,6 +22,7 @@ import { LeadDetailModal } from './components/common/LeadDetailModal';
 import { LeadUpdateModal } from './components/common/LeadUpdateModal';
 import { SupabaseModal } from './components/common/SupabaseModal';
 import { LoginModal } from './components/common/LoginModal';
+import { WipeDataModal } from './components/common/WipeDataModal';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<Profile>(db.getCurrentUser());
@@ -35,6 +38,7 @@ export default function App() {
   const [isCallingQueueOpen, setIsCallingQueueOpen] = useState(false);
   const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [isWipeModalOpen, setIsWipeModalOpen] = useState(false);
 
   // Force re-render key
   const [refreshKey, setRefreshKey] = useState(0);
@@ -94,6 +98,7 @@ export default function App() {
         onGlobalSearchSelect={handleGlobalSearchSelect}
         onToggleSidebar={() => setSidebarOpenMobile(!sidebarOpenMobile)}
         sidebarOpen={sidebarOpenMobile}
+        onOpenWipeData={() => setIsWipeModalOpen(true)}
       />
 
       {/* Main Container */}
@@ -125,6 +130,7 @@ export default function App() {
                       setLeadsStatusFilter('');
                     }}
                     onSelectLead={id => handleGlobalSearchSelect(id)}
+                    onOpenWipeData={() => setIsWipeModalOpen(true)}
                   />
                 )}
                 {currentView === 'leads' && (
@@ -132,6 +138,7 @@ export default function App() {
                     key={refreshKey}
                     onViewLead={handleViewLead}
                     onUpdateLead={handleOpenUpdate}
+                    onOpenWipeData={() => setIsWipeModalOpen(true)}
                   />
                 )}
                 {currentView === 'import' && (
@@ -154,6 +161,18 @@ export default function App() {
                 )}
                 {currentView === 'statuses' && (
                   <StatusMaster key={refreshKey} />
+                )}
+                {currentView === 'field-master' && (
+                  <FieldMaster
+                    key={refreshKey}
+                    onNavigate={view => setCurrentView(view)}
+                  />
+                )}
+                {currentView === 'import-field-master' && (
+                  <ImportFieldMaster
+                    key={refreshKey}
+                    onNavigate={view => setCurrentView(view)}
+                  />
                 )}
                 {currentView === 'reports' && (
                   <AdminReports key={refreshKey} />
@@ -238,6 +257,13 @@ export default function App() {
         isOpen={isLoginModalOpen}
         onClose={() => setIsLoginModalOpen(false)}
         onLoginSuccess={handleUserChanged}
+      />
+
+      {/* 6. Wipe All CRM Data Modal */}
+      <WipeDataModal
+        isOpen={isWipeModalOpen}
+        onClose={() => setIsWipeModalOpen(false)}
+        onSuccess={refreshData}
       />
     </div>
   );

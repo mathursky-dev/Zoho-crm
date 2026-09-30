@@ -13,6 +13,7 @@ export const LeadDetailModal: React.FC<Props> = ({ lead, onClose, onOpenUpdate }
   if (!lead) return null;
 
   const activities: LeadActivity[] = db.getLeadActivities(lead.id);
+  const assignments = db.getLeadAssignments(lead.id);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -182,13 +183,80 @@ export const LeadDetailModal: React.FC<Props> = ({ lead, onClose, onOpenUpdate }
             </div>
           )}
 
+          {/* Custom Fields (from Field Master) */}
+          {lead.custom_fields && Object.keys(lead.custom_fields).length > 0 && (
+            <div className="p-4 rounded-lg bg-purple-50/50 border border-purple-200">
+              <h3 className="text-xs font-bold uppercase text-purple-900 tracking-wider mb-2">
+                Custom Lead Attributes (Field Master)
+              </h3>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                {Object.entries(lead.custom_fields).map(([key, val]) => {
+                  const fld = db.getFieldByKey(key);
+                  const label = fld ? fld.field_label : key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                  return (
+                    <div key={key} className="bg-white p-2.5 rounded-lg border border-purple-100">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                        {label}
+                      </span>
+                      <span className="font-semibold text-slate-800 text-xs mt-0.5 block truncate">
+                        {String(val || '—')}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Last Remark */}
           {lead.remark && (
             <div className="p-4 rounded-lg bg-slate-50 border border-slate-200">
               <h3 className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-1">Latest Remark</h3>
-              <p className="text-sm text-slate-700 italic">"{lead.remark}"</p>
+              <p className="text-sm text-slate-700 italic">&quot;{lead.remark}&quot;</p>
             </div>
           )}
+
+          {/* ASSIGNMENT HISTORY (AUDIT TRAIL) */}
+          <div className="pt-2 border-t border-slate-100">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center space-x-2">
+                <User className="w-4 h-4 text-emerald-600" />
+                <h3 className="font-bold text-slate-800 text-sm">Assignment & Reassignment History</h3>
+              </div>
+              <span className="text-xs text-slate-500">{assignments.length} record(s)</span>
+            </div>
+
+            {assignments.length === 0 ? (
+              <div className="p-3 bg-slate-50 rounded-lg text-xs text-slate-400 text-center border border-dashed">
+                No assignment changes recorded.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {assignments.map(asgn => (
+                  <div key={asgn.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-slate-500 font-medium">Transferred from:</span>
+                        <span className="font-semibold text-slate-700 bg-slate-200/60 px-1.5 py-0.5 rounded">
+                          {asgn.previous_user_name || 'Unassigned'}
+                        </span>
+                        <span className="text-slate-400">→</span>
+                        <span className="font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                          {asgn.assigned_to_name}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        Assigned by: <strong>{asgn.assigned_by_name}</strong>
+                      </div>
+                    </div>
+                    <div className="text-[11px] text-slate-500 text-right">
+                      {new Date(asgn.assigned_at || asgn.created_at).toLocaleString()}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* ACTIVITY HISTORY TIMELINE */}
           <div>

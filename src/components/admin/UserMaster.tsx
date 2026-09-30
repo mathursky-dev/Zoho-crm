@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
 import { Profile, UserRole } from '../../types/crm';
 import { db } from '../../lib/database';
-import { UserCog, Plus, Edit2, Shield, User, Key, Power, X, Phone, Mail, Building2 } from 'lucide-react';
+import { UserCog, Plus, Edit2, Shield, User, Key, Power, X, Phone, Mail } from 'lucide-react';
 
 export const UserMaster: React.FC = () => {
   const [users, setUsers] = useState<(Profile & { password?: string })[]>(db.getUsers(true) as any);
-  const departments = db.getDepartments();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<(Profile & { password?: string }) | null>(null);
@@ -15,7 +14,6 @@ export const UserMaster: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<UserRole>('telecaller');
-  const [departmentId, setDepartmentId] = useState(departments[0]?.id || '');
   const [phone, setPhone] = useState('');
   const [isActive, setIsActive] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +28,6 @@ export const UserMaster: React.FC = () => {
     setEmail('');
     setPassword('');
     setRole('telecaller');
-    setDepartmentId(departments[0]?.id || '');
     setPhone('');
     setIsActive(true);
     setError(null);
@@ -43,7 +40,6 @@ export const UserMaster: React.FC = () => {
     setEmail(u.email);
     setPassword(u.password || '');
     setRole(u.role);
-    setDepartmentId(u.department_id || departments[0]?.id || '');
     setPhone(u.phone || '');
     setIsActive(u.is_active);
     setError(null);
@@ -62,15 +58,11 @@ export const UserMaster: React.FC = () => {
       return;
     }
 
-    const dept = departments.find(d => d.id === departmentId);
-
     if (editingUser) {
       db.updateUser(editingUser.id, {
         full_name: fullName.trim(),
         email: email.trim(),
         role,
-        department_id: departmentId,
-        department_name: dept?.name,
         phone: phone.trim(),
         password: password.trim() ? password.trim() : editingUser.password,
         is_active: isActive,
@@ -80,8 +72,6 @@ export const UserMaster: React.FC = () => {
         full_name: fullName.trim(),
         email: email.trim(),
         role,
-        department_id: departmentId,
-        department_name: dept?.name,
         phone: phone.trim(),
         password: password.trim(),
         is_active: isActive,
@@ -103,7 +93,7 @@ export const UserMaster: React.FC = () => {
         <div>
           <h1 className="text-xl font-bold text-slate-900">User Master & Authentication</h1>
           <p className="text-xs text-slate-500">
-            Manage system administrators and telecaller staff with logins, passwords and department mapping.
+            Manage system administrators and telecaller staff with logins and passwords. (Users are independent of departments; departments belong only to leads).
           </p>
         </div>
         <button
@@ -122,7 +112,6 @@ export const UserMaster: React.FC = () => {
             <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[11px]">
               <th className="p-3">User</th>
               <th className="p-3">Role</th>
-              <th className="p-3">Assigned Department</th>
               <th className="p-3">Contact</th>
               <th className="p-3">Login Password</th>
               <th className="p-3">Status</th>
@@ -156,11 +145,6 @@ export const UserMaster: React.FC = () => {
                     }`}
                   >
                     {u.role}
-                  </span>
-                </td>
-                <td className="p-3">
-                  <span className="font-medium text-slate-700 bg-slate-100 px-2 py-0.5 rounded">
-                    {u.department_name || 'General'}
                   </span>
                 </td>
                 <td className="p-3 text-slate-600 font-mono text-[11px]">
@@ -247,7 +231,7 @@ export const UserMaster: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-bold uppercase text-slate-700 mb-1">
-                  Password {editingUser ? '(leave blank to keep current)' : '<span className="text-red-500">*</span>'}
+                  Password {editingUser ? '(leave blank to keep current)' : ''} {!editingUser && <span className="text-red-500">*</span>}
                 </label>
                 <input
                   type="password"
@@ -258,31 +242,16 @@ export const UserMaster: React.FC = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold uppercase text-slate-700 mb-1">Role</label>
-                  <select
-                    value={role}
-                    onChange={e => setRole(e.target.value as any)}
-                    className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 bg-white"
-                  >
-                    <option value="telecaller">Telecaller / User</option>
-                    <option value="admin">Administrator</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase text-slate-700 mb-1">Department</label>
-                  <select
-                    value={departmentId}
-                    onChange={e => setDepartmentId(e.target.value)}
-                    className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 bg-white"
-                  >
-                    {departments.map(d => (
-                      <option key={d.id} value={d.id}>{d.name}</option>
-                    ))}
-                  </select>
-                </div>
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-700 mb-1">Role</label>
+                <select
+                  value={role}
+                  onChange={e => setRole(e.target.value as any)}
+                  className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 bg-white"
+                >
+                  <option value="telecaller">Telecaller / User</option>
+                  <option value="admin">Administrator</option>
+                </select>
               </div>
 
               <div>
@@ -291,7 +260,7 @@ export const UserMaster: React.FC = () => {
                   type="text"
                   value={phone}
                   onChange={e => setPhone(e.target.value)}
-                  placeholder="+1 555-0101"
+                  placeholder="+91 9876543201"
                   className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500"
                 />
               </div>

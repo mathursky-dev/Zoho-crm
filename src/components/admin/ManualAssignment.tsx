@@ -10,6 +10,7 @@ import {
   Users,
   Search,
   Filter,
+  AlertTriangle,
 } from 'lucide-react';
 import { AdminView } from '../layout/Sidebar';
 
@@ -19,31 +20,33 @@ interface Props {
 
 export const ManualAssignment: React.FC<Props> = ({ onNavigate }) => {
   const departments = db.getDepartments();
+  // Requirement 2: Users must NOT belong to departments. Users are independent.
+  // Admin can assign leads to ANY Active User.
+  const activeTelecallers = db.getUsers(false).filter(u => u.role === 'telecaller');
+  const summary = db.getAdminLeadPoolSummary();
 
-  const [selectedDeptId, setSelectedDeptId] = useState(departments[0]?.id || '');
+  const [selectedDeptId, setSelectedDeptId] = useState('');
   const [filterMode, setFilterMode] = useState<'unassigned' | 'all'>('unassigned');
   const [search, setSearch] = useState('');
   const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
   const [targetUserId, setTargetUserId] = useState('');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
 
-  // Relevant telecallers: ONLY ACTIVE USERS FROM THE RELEVANT DEPARTMENT
-  const activeTelecallers = db.getTelecallersByDepartment(selectedDeptId);
-
-  // Leads for the chosen department
-  const deptLeads = db.getLeads({
-    department_id: selectedDeptId,
+  // Leads for the chosen department or all departments
+  const leads = db.getLeads({
+    department_id: selectedDeptId || undefined,
     onlyUnassigned: filterMode === 'unassigned',
     search: search.trim() || undefined,
   });
 
-  const allSelected = deptLeads.length > 0 && selectedLeadIds.length === deptLeads.length;
+  const allSelected = leads.length > 0 && selectedLeadIds.length === leads.length;
 
   const toggleSelectAll = () => {
     if (allSelected) {
       setSelectedLeadIds([]);
     } else {
-      setSelectedLeadIds(deptLeads.map(l => l.id));
+      setSelectedLeadIds(leads.map(l => l.id));
     }
   };
 
@@ -53,7 +56,12 @@ export const ManualAssignment: React.FC<Props> = ({ onNavigate }) => {
     );
   };
 
-  const handleAssign = () => {
+  const selectedLeads = leads.filter(l => selectedLeadIds.includes(l.id));
+  const alreadyAssignedCount = selectedLeads.filter(l => Boolean(l.assigned_to)).length;
+  const singleAssignedLead = selectedLeads.length === 1 && selectedLeads[0].assigned_to ? selectedLeads[0] : null;
+  const targetUserObj = activeTelecallers.find(u => u.id === targetUserId);
+
+  const executeAssignment = () => {
     if (!targetUserId) {
       setFeedback({ type: 'error', message: 'Please select a telecaller to assign the leads to.' });
       return;
@@ -67,10 +75,27 @@ export const ManualAssignment: React.FC<Props> = ({ onNavigate }) => {
     setFeedback({ type: 'success', message: res.message });
     setSelectedLeadIds([]);
     setTargetUserId('');
+    setShowConfirmModal(false);
     setTimeout(() => setFeedback(null), 4000);
   };
 
-  const currentDept = departments.find(d => d.id === selectedDeptId);
+  const handleAssignClick = () => {
+    if (!targetUserId) {
+      setFeedback({ type: 'error', message: 'Please select a telecaller to assign the leads to.' });
+      return;
+    }
+    if (selectedLeadIds.length === 0) {
+      setFeedback({ type: 'error', message: 'Please select at least one lead from the table.' });
+      return;
+    }
+
+    // If any lead is already assigned, show confirmation prompt
+    if (alreadyAssignedCount > 0) {
+      setShowConfirmModal(true);
+    } else {
+      executeAssignment();
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -78,7 +103,7 @@ export const ManualAssignment: React.FC<Props> = ({ onNavigate }) => {
       <div>
         <h1 className="text-xl font-bold text-slate-900">Manual Lead Assignment & Reassignment</h1>
         <p className="text-xs text-slate-500">
-          Admin selects Department → Selects leads → Selects Telecaller from that department → Assigns in bulk.
+          Admin selects leads (optionally filtered by Department) → Selects ANY active telecaller → Assigns in bulk.
         </p>
       </div>
 
@@ -102,21 +127,21 @@ export const ManualAssignment: React.FC<Props> = ({ onNavigate }) => {
       {/* Control Station Card */}
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-          {/* 1. Department Selection */}
+          {/* 1. Department Selection (Optional Lead Filter) */}
           <div>
             <label className="block text-xs font-bold uppercase text-slate-700 mb-1 flex items-center space-x-1.5">
               <Building2 className="w-3.5 h-3.5 text-blue-600" />
-              <span>1. Select Department</span>
+              <span>1. Filter by Department</span>
             </label>
             <select
               value={selectedDeptId}
               onChange={e => {
                 setSelectedDeptId(e.target.value);
                 setSelectedLeadIds([]);
-                setTargetUserId('');
               }}
               className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 bg-white font-medium focus:ring-2 focus:ring-blue-500"
             >
+              <option value="">All Departments</option>
               {departments.map(d => (
                 <option key={d.id} value={d.id}>
                   {d.name} ({d.code})
@@ -125,11 +150,11 @@ export const ManualAssignment: React.FC<Props> = ({ onNavigate }) => {
             </select>
           </div>
 
-          {/* 2. Target Telecaller from Relevant Department */}
+          {/* 2. Target Telecaller (ANY active user) */}
           <div>
             <label className="block text-xs font-bold uppercase text-slate-700 mb-1 flex items-center space-x-1.5">
               <Users className="w-3.5 h-3.5 text-blue-600" />
-              <span>2. Assign To Telecaller ({activeTelecallers.length} Available)</span>
+              <span>2. Assign To Telecaller ({activeTelecallers.length} Active)</span>
             </label>
             <select
               value={targetUserId}
@@ -137,23 +162,23 @@ export const ManualAssignment: React.FC<Props> = ({ onNavigate }) => {
               disabled={activeTelecallers.length === 0}
               className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 bg-white font-medium focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
             >
-              <option value="">
-                {activeTelecallers.length === 0
-                  ? 'No telecallers in this department'
-                  : '-- Choose Telecaller --'}
-              </option>
-              {activeTelecallers.map(u => (
-                <option key={u.id} value={u.id}>
-                  {u.full_name} ({u.phone || u.email})
-                </option>
-              ))}
+              <option value="">-- Choose Active Telecaller --</option>
+              {activeTelecallers.map(u => {
+                const stats = summary.userStats.find(s => s.user.id === u.id);
+                const leadCount = stats ? stats.assignedCount : 0;
+                return (
+                  <option key={u.id} value={u.id}>
+                    {u.full_name} | {leadCount} Leads Assigned
+                  </option>
+                );
+              })}
             </select>
           </div>
 
           {/* 3. Assign Button */}
           <div>
             <button
-              onClick={handleAssign}
+              onClick={handleAssignClick}
               disabled={selectedLeadIds.length === 0 || !targetUserId}
               className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-bold rounded-lg shadow-xs transition-colors flex items-center justify-center space-x-2"
             >
@@ -162,20 +187,6 @@ export const ManualAssignment: React.FC<Props> = ({ onNavigate }) => {
             </button>
           </div>
         </div>
-
-        {activeTelecallers.length === 0 && (
-          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-center justify-between">
-            <span>
-              No active telecallers are currently assigned to the <strong>{currentDept?.name}</strong> department.
-            </span>
-            <button
-              onClick={() => onNavigate('users')}
-              className="text-xs font-bold text-amber-900 underline hover:text-black"
-            >
-              Assign Users in User Master →
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Leads Selection Table */}
@@ -209,7 +220,7 @@ export const ManualAssignment: React.FC<Props> = ({ onNavigate }) => {
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                All Department Leads (Reassignment)
+                All Leads (Reassignment)
               </button>
             </div>
           </div>
@@ -243,23 +254,26 @@ export const ManualAssignment: React.FC<Props> = ({ onNavigate }) => {
                 <th className="p-3">Lead Code</th>
                 <th className="p-3">Customer Name</th>
                 <th className="p-3">Mobile</th>
+                <th className="p-3">Department</th>
                 <th className="p-3">Product</th>
-                <th className="p-3">Deal Value</th>
+                <th className="p-3">Assignment Status</th>
                 <th className="p-3">Currently Assigned To</th>
                 <th className="p-3">Status</th>
                 <th className="p-3">Created</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {deptLeads.length === 0 ? (
+              {leads.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="p-8 text-center text-slate-400 text-xs">
-                    No leads found matching "{filterMode === 'unassigned' ? 'Unassigned' : 'All'}" in {currentDept?.name}.
+                  <td colSpan={10} className="p-8 text-center text-slate-400 text-xs">
+                    No leads found matching "{filterMode === 'unassigned' ? 'Unassigned' : 'All'}".
                   </td>
                 </tr>
               ) : (
-                deptLeads.map(lead => {
+                leads.map(lead => {
                   const isSelected = selectedLeadIds.includes(lead.id);
+                  const isAssigned = Boolean(lead.assigned_to);
+
                   return (
                     <tr
                       key={lead.id}
@@ -283,17 +297,28 @@ export const ManualAssignment: React.FC<Props> = ({ onNavigate }) => {
                       <td className="p-3 font-mono font-bold text-blue-600">{lead.lead_code}</td>
                       <td className="p-3 font-bold text-slate-900">{lead.customer_name}</td>
                       <td className="p-3 font-mono text-slate-700">{lead.mobile}</td>
+                      <td className="p-3">
+                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-medium">
+                          {lead.department_name}
+                        </span>
+                      </td>
                       <td className="p-3 text-slate-800">{lead.product}</td>
-                      <td className="p-3 font-semibold text-emerald-700">
-                        ${(lead.amount || 0).toLocaleString()}
+                      <td className="p-3">
+                        {isAssigned ? (
+                          <span className="inline-flex items-center space-x-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded font-semibold text-[11px]">
+                            <span>Assigned ✓</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 bg-amber-50 text-amber-800 border border-amber-200 rounded font-semibold text-[11px]">
+                            Unassigned
+                          </span>
+                        )}
                       </td>
                       <td className="p-3">
                         {lead.assigned_to_name ? (
                           <span className="font-semibold text-slate-800">{lead.assigned_to_name}</span>
                         ) : (
-                          <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-                            Unassigned
-                          </span>
+                          <span className="text-slate-400">-</span>
                         )}
                       </td>
                       <td className="p-3">
@@ -312,6 +337,61 @@ export const ManualAssignment: React.FC<Props> = ({ onNavigate }) => {
           </table>
         </div>
       </div>
+
+      {/* Reassignment Confirmation Modal */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200">
+            <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
+              <h3 className="font-bold text-sm">Confirm Reassignment</h3>
+              <button
+                onClick={() => setShowConfirmModal(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="flex items-start space-x-3 text-amber-800 bg-amber-50 p-3.5 rounded-lg border border-amber-200 text-xs">
+                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  {singleAssignedLead ? (
+                    <p>
+                      This lead is currently assigned to <strong>{singleAssignedLead.assigned_to_name}</strong>.
+                      Do you want to reassign it to <strong>{targetUserObj?.full_name}</strong>?
+                    </p>
+                  ) : (
+                    <p>
+                      <strong>{alreadyAssignedCount}</strong> of the selected leads are currently assigned to other users.
+                      Do you want to reassign them to <strong>{targetUserObj?.full_name}</strong>?
+                    </p>
+                  )}
+                  <p className="mt-1.5 text-[11px] text-amber-700">
+                    The previous assignment will remain permanently recorded in the Assignment History audit log.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmModal(false)}
+                  className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={executeAssignment}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-xs"
+                >
+                  Confirm & Reassign
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

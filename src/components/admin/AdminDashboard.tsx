@@ -12,15 +12,19 @@ import {
   ArrowUpRight,
   FileSpreadsheet,
   Plus,
+  Sliders,
+  TableProperties,
+  Trash2,
 } from 'lucide-react';
 import { AdminView } from '../layout/Sidebar';
 
 interface Props {
   onNavigate: (view: AdminView) => void;
   onSelectLead: (leadId: string) => void;
+  onOpenWipeData?: () => void;
 }
 
-export const AdminDashboard: React.FC<Props> = ({ onNavigate, onSelectLead }) => {
+export const AdminDashboard: React.FC<Props> = ({ onNavigate, onSelectLead, onOpenWipeData }) => {
   const metrics = db.getAdminDashboardMetrics();
   const unassignedLeads = db.getLeads({ onlyUnassigned: true }).slice(0, 5);
   const departments = db.getDepartments();
@@ -52,6 +56,20 @@ export const AdminDashboard: React.FC<Props> = ({ onNavigate, onSelectLead }) =>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
+            onClick={() => onNavigate('field-master')}
+            className="inline-flex items-center space-x-1.5 px-3 py-2 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-lg text-xs font-bold transition-colors"
+          >
+            <Sliders className="w-3.5 h-3.5" />
+            <span>Field Master</span>
+          </button>
+          <button
+            onClick={() => onNavigate('import-field-master')}
+            className="inline-flex items-center space-x-1.5 px-3 py-2 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-lg text-xs font-bold transition-colors"
+          >
+            <TableProperties className="w-3.5 h-3.5" />
+            <span>Import Field Master</span>
+          </button>
+          <button
             onClick={() => onNavigate('import')}
             className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold transition-colors shadow-xs"
           >
@@ -65,6 +83,16 @@ export const AdminDashboard: React.FC<Props> = ({ onNavigate, onSelectLead }) =>
             <UserCheck className="w-3.5 h-3.5" />
             <span>Manual Assignment</span>
           </button>
+          {onOpenWipeData && (
+            <button
+              onClick={onOpenWipeData}
+              className="inline-flex items-center space-x-1.5 px-3 py-2 bg-rose-600/80 hover:bg-rose-600 text-white border border-rose-500 rounded-lg text-xs font-bold transition-colors shadow-xs"
+              title="Permanently remove all CRM data and leads"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Remove All Data</span>
+            </button>
+          )}
         </div>
       </div>
 
