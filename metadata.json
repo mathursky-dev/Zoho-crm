@@ -1,0 +1,7 @@
+{
+  "name": "LeadFlow CRM - Lead Assignment & Telecaller System",
+  "description": "Fast and responsive Lead Assignment CRM with Department/User/Status masters, Excel/CSV bulk import, manual assignment, Telecaller dashboard, and activity history.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
