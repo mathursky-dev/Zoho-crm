@@ -105,8 +105,11 @@ export const ImportFieldMaster: React.FC<Props> = ({ onNavigate }) => {
   };
 
   const handleToggleActive = (mapping: ImportFieldMappingItem) => {
-    db.updateImportFieldMapping(mapping.id, { is_active: !mapping.is_active });
-    refreshMappings();
+    const newActive = !mapping.is_active;
+    db.updateImportFieldMapping(mapping.id, { is_active: newActive });
+    setMappings(prev =>
+      prev.map(item => (item.id === mapping.id ? { ...item, is_active: newActive } : item))
+    );
   };
 
   // Test Matcher Evaluation

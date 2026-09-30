@@ -67,8 +67,11 @@ export const DepartmentMaster: React.FC = () => {
   };
 
   const toggleStatus = (dept: Department) => {
-    db.updateDepartment(dept.id, { is_active: !dept.is_active });
-    refreshList();
+    const newActiveState = !dept.is_active;
+    db.updateDepartment(dept.id, { is_active: newActiveState });
+    setDepartments(prev =>
+      prev.map(item => (item.id === dept.id ? { ...item, is_active: newActiveState } : item))
+    );
   };
 
   return (

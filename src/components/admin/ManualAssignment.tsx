@@ -11,6 +11,7 @@ import {
   Search,
   Filter,
   AlertTriangle,
+  Calendar,
 } from 'lucide-react';
 import { AdminView } from '../layout/Sidebar';
 
@@ -28,6 +29,9 @@ export const ManualAssignment: React.FC<Props> = ({ onNavigate }) => {
   const [selectedDeptId, setSelectedDeptId] = useState('');
   const [filterMode, setFilterMode] = useState<'unassigned' | 'all'>('unassigned');
   const [search, setSearch] = useState('');
+  const [dateRange, setDateRange] = useState<'all' | 'today' | 'yesterday' | 'week' | '7days' | '30days' | 'month' | 'custom'>('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
   const [targetUserId, setTargetUserId] = useState('');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -38,6 +42,9 @@ export const ManualAssignment: React.FC<Props> = ({ onNavigate }) => {
     department_id: selectedDeptId || undefined,
     onlyUnassigned: filterMode === 'unassigned',
     search: search.trim() || undefined,
+    dateRange,
+    startDate: startDate || undefined,
+    endDate: endDate || undefined,
   });
 
   const allSelected = leads.length > 0 && selectedLeadIds.length === leads.length;
@@ -192,48 +199,120 @@ export const ManualAssignment: React.FC<Props> = ({ onNavigate }) => {
       {/* Leads Selection Table */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden space-y-3">
         {/* Table Filters & Counters */}
-        <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
-          <div className="flex items-center space-x-2">
-            <span className="text-xs font-bold text-slate-700">Filter Leads:</span>
-            <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs font-medium">
-              <button
-                onClick={() => {
-                  setFilterMode('unassigned');
-                  setSelectedLeadIds([]);
-                }}
-                className={`px-3 py-1 rounded-md transition-colors ${
-                  filterMode === 'unassigned'
-                    ? 'bg-blue-600 text-white font-semibold'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Unassigned Only
-              </button>
-              <button
-                onClick={() => {
-                  setFilterMode('all');
-                  setSelectedLeadIds([]);
-                }}
-                className={`px-3 py-1 rounded-md transition-colors ${
-                  filterMode === 'all'
-                    ? 'bg-blue-600 text-white font-semibold'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                All Leads (Reassignment)
-              </button>
+        <div className="p-4 border-b border-slate-200 space-y-2.5 bg-slate-50/50">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center space-x-2">
+              <span className="text-xs font-bold text-slate-700">Filter Leads:</span>
+              <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs font-medium">
+                <button
+                  onClick={() => {
+                    setFilterMode('unassigned');
+                    setSelectedLeadIds([]);
+                  }}
+                  className={`px-3 py-1 rounded-md transition-colors ${
+                    filterMode === 'unassigned'
+                      ? 'bg-blue-600 text-white font-semibold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Unassigned Only
+                </button>
+                <button
+                  onClick={() => {
+                    setFilterMode('all');
+                    setSelectedLeadIds([]);
+                  }}
+                  className={`px-3 py-1 rounded-md transition-colors ${
+                    filterMode === 'all'
+                      ? 'bg-blue-600 text-white font-semibold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  All Leads (Reassignment)
+                </button>
+              </div>
+            </div>
+
+            <div className="relative max-w-xs w-full">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Filter by customer, phone, code..."
+                className="w-full text-xs pl-8 pr-3 py-1.5 rounded-lg border border-slate-300 bg-white"
+              />
             </div>
           </div>
 
-          <div className="relative max-w-xs w-full">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
-            <input
-              type="text"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Filter by customer, phone, code..."
-              className="w-full text-xs pl-8 pr-3 py-1.5 rounded-lg border border-slate-300 bg-white"
-            />
+          {/* Date Range Selection Bar */}
+          <div className="pt-2 border-t border-slate-200/60 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="font-bold text-slate-600 flex items-center space-x-1 mr-1">
+                <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                <span>Date:</span>
+              </span>
+              {(
+                [
+                  { label: 'All Dates', value: 'all' },
+                  { label: 'Today', value: 'today' },
+                  { label: 'Yesterday', value: 'yesterday' },
+                  { label: 'Last 7 Days', value: '7days' },
+                  { label: 'Last 30 Days', value: '30days' },
+                  { label: 'This Month', value: 'month' },
+                  { label: 'Custom', value: 'custom' },
+                ] as const
+              ).map(preset => (
+                <button
+                  key={preset.value}
+                  type="button"
+                  onClick={() => {
+                    setDateRange(preset.value);
+                    if (preset.value !== 'custom') {
+                      setStartDate('');
+                      setEndDate('');
+                    }
+                  }}
+                  className={`px-2.5 py-0.5 rounded text-[11px] font-medium transition-colors ${
+                    dateRange === preset.value
+                      ? 'bg-blue-600 text-white font-bold'
+                      : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+
+            {dateRange === 'custom' && (
+              <div className="flex items-center space-x-2 bg-white px-2 py-1 rounded border border-slate-200 text-[11px]">
+                <span className="text-slate-500">From:</span>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={e => setStartDate(e.target.value)}
+                  className="px-1.5 py-0.5 border border-slate-300 rounded text-[11px]"
+                />
+                <span className="text-slate-500">To:</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={e => setEndDate(e.target.value)}
+                  className="px-1.5 py-0.5 border border-slate-300 rounded text-[11px]"
+                />
+                {(startDate || endDate) && (
+                  <button
+                    onClick={() => {
+                      setStartDate('');
+                      setEndDate('');
+                    }}
+                    className="text-blue-600 hover:underline font-bold"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

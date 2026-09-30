@@ -44,7 +44,6 @@ export const Navbar: React.FC<Props> = ({
   const [showUserDropdown, setShowUserDropdown] = useState(false);
 
   const supabaseConfig = getSupabaseConfig();
-  const allUsers = db.getUsers(false);
 
   // Search results
   const searchResults = searchTerm.trim()
@@ -57,16 +56,9 @@ export const Navbar: React.FC<Props> = ({
     onGlobalSearchSelect(leadId);
   };
 
-  const handleSwitchUser = (userId: string) => {
-    const updated = db.switchDemoUser(userId);
-    if (updated) {
-      onUserChanged(updated);
-      setShowUserDropdown(false);
-    }
-  };
-
   const handleLogout = () => {
     db.signOut();
+    setShowUserDropdown(false);
     onOpenLogin();
   };
 
@@ -229,36 +221,6 @@ export const Navbar: React.FC<Props> = ({
                     >
                       {currentUser.role}
                     </span>
-                  </div>
-                </div>
-
-                <div className="p-2 border-b border-slate-100">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2 py-1">
-                    Instant Demo Role Switch
-                  </div>
-                  <div className="space-y-1">
-                    {allUsers.map(u => {
-                      const isCurrent = u.id === currentUser.id;
-                      return (
-                        <button
-                          key={u.id}
-                          onClick={() => handleSwitchUser(u.id)}
-                          className={`w-full p-2 rounded-lg text-left text-xs flex items-center justify-between transition-colors ${
-                            isCurrent
-                              ? 'bg-blue-50 text-blue-700 font-semibold'
-                              : 'text-slate-700 hover:bg-slate-50'
-                          }`}
-                        >
-                          <div>
-                            <div className="font-medium">{u.full_name}</div>
-                            <div className="text-[10px] text-slate-400 capitalize">
-                              {u.role === 'admin' ? 'Administrator' : 'Telecaller'}
-                            </div>
-                          </div>
-                          {isCurrent && <CheckCircle2 className="w-4 h-4 text-blue-600" />}
-                        </button>
-                      );
-                    })}
                   </div>
                 </div>
 

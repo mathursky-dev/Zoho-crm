@@ -50,11 +50,12 @@ export const AllLeads: React.FC<Props> = ({
   const [source, setSource] = useState('');
 
   // Date filters
-  const [importDateRange, setImportDateRange] = useState<'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom'>('all');
+  const [dateFilterType, setDateFilterType] = useState<'import' | 'assigned'>('import');
+  const [importDateRange, setImportDateRange] = useState<'all' | 'today' | 'yesterday' | 'week' | '7days' | '30days' | 'month' | 'custom'>('all');
   const [importStartDate, setImportStartDate] = useState('');
   const [importEndDate, setImportEndDate] = useState('');
 
-  const [assignedDateRange, setAssignedDateRange] = useState<'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom'>('all');
+  const [assignedDateRange, setAssignedDateRange] = useState<'all' | 'today' | 'yesterday' | 'week' | '7days' | '30days' | 'month' | 'custom'>('all');
   const [assignedStartDate, setAssignedStartDate] = useState('');
   const [assignedEndDate, setAssignedEndDate] = useState('');
 
@@ -444,93 +445,175 @@ export const AllLeads: React.FC<Props> = ({
           </select>
         </div>
 
-        {/* Row 3: Quick Date Filters */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-slate-100">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center space-x-1.5 text-xs text-slate-600">
-              <span className="font-semibold">Import Date:</span>
-              <select
-                value={importDateRange}
-                onChange={e => setImportDateRange(e.target.value as any)}
-                className="text-xs px-2 py-1 rounded border border-slate-300 bg-white"
-              >
-                <option value="all">All Time</option>
-                <option value="today">Today</option>
-                <option value="yesterday">Yesterday</option>
-                <option value="week">This Week</option>
-                <option value="month">This Month</option>
-                <option value="custom">Custom Range</option>
-              </select>
+        {/* Row 3: Dedicated Date Range Filter Bar */}
+        <div className="pt-3 border-t border-slate-100 space-y-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2.5">
+            <div className="flex items-center space-x-2">
+              <div className="flex items-center text-xs font-bold text-slate-700 space-x-1.5">
+                <Calendar className="w-4 h-4 text-blue-600" />
+                <span>Date Range:</span>
+              </div>
+              <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-[11px] font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setDateFilterType('import')}
+                  className={`px-2.5 py-0.5 rounded-md transition-all ${
+                    dateFilterType === 'import'
+                      ? 'bg-white text-blue-700 shadow-xs font-bold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Import / Created Date
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDateFilterType('assigned')}
+                  className={`px-2.5 py-0.5 rounded-md transition-all ${
+                    dateFilterType === 'assigned'
+                      ? 'bg-white text-blue-700 shadow-xs font-bold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Assigned Date
+                </button>
+              </div>
             </div>
 
-            <div className="flex items-center space-x-1.5 text-xs text-slate-600">
-              <span className="font-semibold">Assigned Date:</span>
-              <select
-                value={assignedDateRange}
-                onChange={e => setAssignedDateRange(e.target.value as any)}
-                className="text-xs px-2 py-1 rounded border border-slate-300 bg-white"
-              >
-                <option value="all">All Dates</option>
-                <option value="today">Today</option>
-                <option value="yesterday">Yesterday</option>
-                <option value="week">This Week</option>
-                <option value="month">This Month</option>
-                <option value="custom">Custom Range</option>
-              </select>
-            </div>
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="text-xs px-2.5 py-1 text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg font-medium flex items-center space-x-1 transition-colors"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Reset All Filters</span>
+            </button>
           </div>
 
-          <button
-            type="button"
-            onClick={resetFilters}
-            className="text-xs px-3 py-1.5 text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg font-medium flex items-center space-x-1 transition-colors"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>Reset Filters</span>
-          </button>
+          {/* Quick Date Range Pills */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {dateFilterType === 'import' ? (
+              <>
+                {(
+                  [
+                    { label: 'All Time', value: 'all' },
+                    { label: 'Today', value: 'today' },
+                    { label: 'Yesterday', value: 'yesterday' },
+                    { label: 'Last 7 Days', value: '7days' },
+                    { label: 'Last 30 Days', value: '30days' },
+                    { label: 'This Month', value: 'month' },
+                    { label: 'Custom Range', value: 'custom' },
+                  ] as const
+                ).map(preset => (
+                  <button
+                    key={preset.value}
+                    type="button"
+                    onClick={() => {
+                      setImportDateRange(preset.value);
+                      if (preset.value !== 'custom') {
+                        setImportStartDate('');
+                        setImportEndDate('');
+                      }
+                    }}
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                      importDateRange === preset.value
+                        ? 'bg-blue-600 text-white font-bold shadow-2xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </>
+            ) : (
+              <>
+                {(
+                  [
+                    { label: 'All Dates', value: 'all' },
+                    { label: 'Assigned Today', value: 'today' },
+                    { label: 'Assigned Yesterday', value: 'yesterday' },
+                    { label: 'Last 7 Days', value: '7days' },
+                    { label: 'Last 30 Days', value: '30days' },
+                    { label: 'This Month', value: 'month' },
+                    { label: 'Custom Range', value: 'custom' },
+                  ] as const
+                ).map(preset => (
+                  <button
+                    key={preset.value}
+                    type="button"
+                    onClick={() => {
+                      setAssignedDateRange(preset.value);
+                      if (preset.value !== 'custom') {
+                        setAssignedStartDate('');
+                        setAssignedEndDate('');
+                      }
+                    }}
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                      assignedDateRange === preset.value
+                        ? 'bg-blue-600 text-white font-bold shadow-2xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </>
+            )}
+          </div>
+
+          {/* Custom Date Range Pickers (Start Date & End Date) */}
+          {((dateFilterType === 'import' && importDateRange === 'custom') ||
+            (dateFilterType === 'assigned' && assignedDateRange === 'custom')) && (
+            <div className="flex flex-wrap items-center gap-3 p-3 bg-blue-50/60 rounded-lg border border-blue-200 text-xs mt-2 animate-in fade-in duration-100">
+              <span className="font-bold text-blue-900">
+                {dateFilterType === 'import' ? 'Select Import Date Range:' : 'Select Assigned Date Range:'}
+              </span>
+              <div className="flex items-center space-x-2">
+                <label className="text-slate-600 font-medium">From:</label>
+                <input
+                  type="date"
+                  value={dateFilterType === 'import' ? importStartDate : assignedStartDate}
+                  onChange={e =>
+                    dateFilterType === 'import'
+                      ? setImportStartDate(e.target.value)
+                      : setAssignedStartDate(e.target.value)
+                  }
+                  className="px-2.5 py-1 text-xs border border-slate-300 rounded-md bg-white shadow-2xs focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="flex items-center space-x-2">
+                <label className="text-slate-600 font-medium">To:</label>
+                <input
+                  type="date"
+                  value={dateFilterType === 'import' ? importEndDate : assignedEndDate}
+                  onChange={e =>
+                    dateFilterType === 'import'
+                      ? setImportEndDate(e.target.value)
+                      : setAssignedEndDate(e.target.value)
+                  }
+                  className="px-2.5 py-1 text-xs border border-slate-300 rounded-md bg-white shadow-2xs focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              {((dateFilterType === 'import' && (importStartDate || importEndDate)) ||
+                (dateFilterType === 'assigned' && (assignedStartDate || assignedEndDate))) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (dateFilterType === 'import') {
+                      setImportStartDate('');
+                      setImportEndDate('');
+                    } else {
+                      setAssignedStartDate('');
+                      setAssignedEndDate('');
+                    }
+                  }}
+                  className="text-blue-700 hover:text-blue-900 underline font-semibold text-[11px]"
+                >
+                  Clear dates
+                </button>
+              )}
+            </div>
+          )}
         </div>
-
-        {/* Custom date range pickers if selected */}
-        {(importDateRange === 'custom' || assignedDateRange === 'custom') && (
-          <div className="flex flex-wrap items-center gap-4 p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-xs">
-            {importDateRange === 'custom' && (
-              <div className="flex items-center space-x-2">
-                <span className="font-semibold text-slate-600">Import:</span>
-                <input
-                  type="date"
-                  value={importStartDate}
-                  onChange={e => setImportStartDate(e.target.value)}
-                  className="px-2 py-1 border border-slate-300 rounded bg-white"
-                />
-                <span>to</span>
-                <input
-                  type="date"
-                  value={importEndDate}
-                  onChange={e => setImportEndDate(e.target.value)}
-                  className="px-2 py-1 border border-slate-300 rounded bg-white"
-                />
-              </div>
-            )}
-            {assignedDateRange === 'custom' && (
-              <div className="flex items-center space-x-2">
-                <span className="font-semibold text-slate-600">Assigned:</span>
-                <input
-                  type="date"
-                  value={assignedStartDate}
-                  onChange={e => setAssignedStartDate(e.target.value)}
-                  className="px-2 py-1 border border-slate-300 rounded bg-white"
-                />
-                <span>to</span>
-                <input
-                  type="date"
-                  value={assignedEndDate}
-                  onChange={e => setAssignedEndDate(e.target.value)}
-                  className="px-2 py-1 border border-slate-300 rounded bg-white"
-                />
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {/* 1. ADMIN LEAD POOL TABLE */}

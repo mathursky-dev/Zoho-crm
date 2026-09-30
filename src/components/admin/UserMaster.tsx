@@ -11,6 +11,7 @@ export const UserMaster: React.FC = () => {
 
   // Form state
   const [fullName, setFullName] = useState('');
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<UserRole>('telecaller');
@@ -25,6 +26,7 @@ export const UserMaster: React.FC = () => {
   const openAddModal = () => {
     setEditingUser(null);
     setFullName('');
+    setUsername('');
     setEmail('');
     setPassword('');
     setRole('telecaller');
@@ -37,6 +39,7 @@ export const UserMaster: React.FC = () => {
   const openEditModal = (u: Profile & { password?: string }) => {
     setEditingUser(u);
     setFullName(u.full_name);
+    setUsername(u.username || u.email.split('@')[0]);
     setEmail(u.email);
     setPassword(u.password || '');
     setRole(u.role);
@@ -58,9 +61,12 @@ export const UserMaster: React.FC = () => {
       return;
     }
 
+    const cleanUsername = username.trim() || email.trim().split('@')[0].toLowerCase();
+
     if (editingUser) {
       db.updateUser(editingUser.id, {
         full_name: fullName.trim(),
+        username: cleanUsername,
         email: email.trim(),
         role,
         phone: phone.trim(),
@@ -70,6 +76,7 @@ export const UserMaster: React.FC = () => {
     } else {
       db.addUser({
         full_name: fullName.trim(),
+        username: cleanUsername,
         email: email.trim(),
         role,
         phone: phone.trim(),
@@ -83,8 +90,11 @@ export const UserMaster: React.FC = () => {
   };
 
   const toggleStatus = (u: Profile) => {
-    db.updateUser(u.id, { is_active: !u.is_active });
-    refreshList();
+    const newActiveState = !u.is_active;
+    db.updateUser(u.id, { is_active: newActiveState });
+    setUsers(prev =>
+      prev.map(item => (item.id === u.id ? { ...item, is_active: newActiveState } : item))
+    );
   };
 
   return (
@@ -132,7 +142,10 @@ export const UserMaster: React.FC = () => {
                     </div>
                     <div>
                       <div className="font-bold text-slate-900">{u.full_name}</div>
-                      <div className="text-[11px] text-slate-400">{u.email}</div>
+                      <div className="text-[11px] text-slate-500 font-mono">
+                        User ID: <span className="font-bold text-blue-700 bg-blue-50 px-1 py-0.5 rounded">{u.username || u.email.split('@')[0]}</span>
+                      </div>
+                      <div className="text-[10px] text-slate-400">{u.email}</div>
                     </div>
                   </div>
                 </td>
@@ -213,6 +226,20 @@ export const UserMaster: React.FC = () => {
                   placeholder="e.g. Alex Rivera"
                   className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500"
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-700 mb-1">
+                  User ID (Login Username)
+                </label>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={e => setUsername(e.target.value.toLowerCase().replace(/\s+/g, ''))}
+                  placeholder="e.g. admin or alex"
+                  className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 font-mono"
+                />
+                <span className="text-[10px] text-slate-400">Can be used to sign in instead of full email.</span>
               </div>
 
               <div>

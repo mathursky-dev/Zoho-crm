@@ -236,18 +236,27 @@ export const FieldMaster: React.FC<Props> = ({ onNavigate }) => {
   };
 
   const handleToggleActive = (field: FieldMasterItem) => {
-    db.updateField(field.id, { is_active: !field.is_active });
-    refreshFields();
+    const newActive = !field.is_active;
+    db.updateField(field.id, { is_active: newActive });
+    setFields(prev =>
+      prev.map(item => (item.id === field.id ? { ...item, is_active: newActive } : item))
+    );
   };
 
   const handleToggleTable = (field: FieldMasterItem) => {
-    db.updateField(field.id, { show_in_table: !field.show_in_table });
-    refreshFields();
+    const newShow = !field.show_in_table;
+    db.updateField(field.id, { show_in_table: newShow });
+    setFields(prev =>
+      prev.map(item => (item.id === field.id ? { ...item, show_in_table: newShow } : item))
+    );
   };
 
   const handleToggleTemplate = (field: FieldMasterItem) => {
-    db.updateField(field.id, { show_in_template: !field.show_in_template });
-    refreshFields();
+    const newTemplate = !field.show_in_template;
+    db.updateField(field.id, { show_in_template: newTemplate });
+    setFields(prev =>
+      prev.map(item => (item.id === field.id ? { ...item, show_in_template: newTemplate } : item))
+    );
   };
 
   const handleDeleteField = (field: FieldMasterItem) => {

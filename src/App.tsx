@@ -25,7 +25,7 @@ import { LoginModal } from './components/common/LoginModal';
 import { WipeDataModal } from './components/common/WipeDataModal';
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState<Profile>(db.getCurrentUser());
+  const [currentUser, setCurrentUser] = useState<Profile | null>(() => db.getCurrentUser());
   const [currentView, setCurrentView] = useState<string>('dashboard');
   const [sidebarOpenMobile, setSidebarOpenMobile] = useState(false);
 
@@ -51,7 +51,14 @@ export default function App() {
     setCurrentUser(newUser);
     setCurrentView('dashboard');
     setLeadsStatusFilter('');
+    setIsLoginModalOpen(false);
     refreshData();
+  };
+
+  const handleLogout = () => {
+    db.signOut();
+    setCurrentUser(null);
+    setIsLoginModalOpen(true);
   };
 
   const handleGlobalSearchSelect = (leadId: string) => {
@@ -84,6 +91,20 @@ export default function App() {
     }
   };
 
+  // If no user is logged in, show mandatory login screen (No login without password)
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+        <LoginModal
+          isOpen={true}
+          onClose={() => {}}
+          canClose={false}
+          onLoginSuccess={handleUserChanged}
+        />
+      </div>
+    );
+  }
+
   // Calling queue leads: leads assigned to telecaller that are not converted yet
   const queueLeads = db.getLeads().filter(l => l.status !== 'Converted' && l.status !== 'Not Interested');
 
@@ -93,7 +114,7 @@ export default function App() {
       <Navbar
         currentUser={currentUser}
         onUserChanged={handleUserChanged}
-        onOpenLogin={() => setIsLoginModalOpen(true)}
+        onOpenLogin={handleLogout}
         onOpenSupabase={() => setIsSupabaseModalOpen(true)}
         onGlobalSearchSelect={handleGlobalSearchSelect}
         onToggleSidebar={() => setSidebarOpenMobile(!sidebarOpenMobile)}
@@ -111,7 +132,7 @@ export default function App() {
             setCurrentView(view);
             setLeadsStatusFilter('');
           }}
-          onLogout={() => setIsLoginModalOpen(true)}
+          onLogout={handleLogout}
           isOpenMobile={sidebarOpenMobile}
           onCloseMobile={() => setSidebarOpenMobile(false)}
         />
