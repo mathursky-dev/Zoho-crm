@@ -12,6 +12,8 @@ import {
   X,
   RefreshCw,
   PhoneCall,
+  Lock,
+  Unlock,
 } from 'lucide-react';
 
 interface Props {
@@ -34,6 +36,14 @@ export const MyLeads: React.FC<Props> = ({
   const [dateRange, setDateRange] = useState<'all' | 'today' | 'yesterday' | 'week' | '7days' | '30days' | 'month' | 'custom'>('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [unlockedMap, setUnlockedMap] = useState<Record<string, boolean>>({});
+  const [, setVersion] = useState(0);
+
+  const handleUnlockMobile = (leadId: string) => {
+    db.unlockLeadMobile(leadId);
+    setUnlockedMap(prev => ({ ...prev, [leadId]: true }));
+    setVersion(v => v + 1);
+  };
 
   // Update status when initialStatusFilter changes (e.g. from KPI card click)
   useEffect(() => {
@@ -119,17 +129,23 @@ export const MyLeads: React.FC<Props> = ({
             <span>Start Calling Queue</span>
           </button>
 
-          <div className="flex items-center border border-slate-300 rounded-lg overflow-hidden bg-white text-xs font-semibold">
+          {/* Export Buttons: Explicitly disabled for telecallers */}
+          <div
+            className="flex items-center border border-slate-200 rounded-lg overflow-hidden bg-slate-100 text-xs font-semibold cursor-not-allowed opacity-75 shadow-2xs"
+            title="Export disabled for Telecallers by Administrator Policy"
+          >
             <button
-              onClick={() => handleExport('xlsx')}
-              className="px-3 py-2 hover:bg-slate-50 text-slate-700 flex items-center space-x-1 border-r border-slate-200"
+              type="button"
+              disabled
+              className="px-3 py-2 text-slate-400 cursor-not-allowed flex items-center space-x-1.5 border-r border-slate-200"
             >
-              <Download className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Excel</span>
+              <Lock className="w-3.5 h-3.5 text-slate-400" />
+              <span>Excel (Disabled)</span>
             </button>
             <button
-              onClick={() => handleExport('csv')}
-              className="px-3 py-2 hover:bg-slate-50 text-slate-700"
+              type="button"
+              disabled
+              className="px-3 py-2 text-slate-400 cursor-not-allowed"
             >
               CSV
             </button>
@@ -329,9 +345,55 @@ export const MyLeads: React.FC<Props> = ({
                       )}
                     </td>
 
-                    {/* Mobile */}
-                    <td className="p-3 font-mono font-medium text-slate-900">
-                      {lead.mobile}
+                    {/* Mobile with Unblock button and count */}
+                    <td className="p-3">
+                      {unlockedMap[lead.id] ? (
+                        <div className="space-y-1">
+                          <div className="flex items-center space-x-1.5">
+                            <a
+                              href={`tel:${lead.mobile}`}
+                              className="font-mono font-bold text-slate-900 hover:text-blue-600 hover:underline flex items-center space-x-1 text-xs"
+                            >
+                              <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
+                              <span>{lead.mobile}</span>
+                            </a>
+                          </div>
+                          <div className="flex items-center space-x-1.5">
+                            <span className="inline-flex items-center space-x-1 text-[10px] font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                              <Eye className="w-2.5 h-2.5 text-emerald-600" />
+                              <span>Unlocked: {lead.mobile_unlock_count || 1} {(lead.mobile_unlock_count || 1) === 1 ? 'time' : 'times'}</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleUnlockMobile(lead.id)}
+                              title="Unlock again to count view"
+                              className="text-[10px] text-blue-600 hover:text-blue-800 underline font-medium"
+                            >
+                              +1
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          <button
+                            type="button"
+                            onClick={() => handleUnlockMobile(lead.id)}
+                            className="inline-flex items-center space-x-1.5 px-3 py-1 bg-gradient-to-b from-white via-slate-50 to-slate-100 hover:from-slate-50 hover:to-slate-200 border-2 border-slate-400 active:border-slate-600 rounded text-blue-700 hover:text-blue-800 font-bold text-xs shadow-2xs transition-all cursor-pointer"
+                            title="Click to unblock and view customer mobile number"
+                          >
+                            <Unlock className="w-3.5 h-3.5 text-blue-600" />
+                            <span>Unblock</span>
+                          </button>
+                          {lead.mobile_unlock_count && lead.mobile_unlock_count > 0 ? (
+                            <div className="text-[10px] text-amber-700 font-semibold flex items-center space-x-1">
+                              <Eye className="w-2.5 h-2.5 text-amber-600" />
+                              <span>Unlocked {lead.mobile_unlock_count}x</span>
+                            </div>
+                          ) : (
+                            <div className="text-[10px] text-slate-400">Locked</div>
+                          )}
+                        </div>
+                      )}
                     </td>
 
                     {/* Product */}

@@ -78,6 +78,11 @@ export interface Lead {
   // Custom fields dictionary
   custom_fields?: Record<string, any>;
 
+  // Mobile number unlocking tracking & audit
+  mobile_unlock_count?: number;
+  mobile_unlocked_at?: string | null;
+  mobile_unlocked_by?: string | null;
+
   // Order placed extra details
   order_amount?: number | null;
   order_product?: string | null;

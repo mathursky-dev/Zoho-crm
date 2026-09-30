@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { db } from '../../lib/database';
-import { Download, Calendar, TrendingUp, CheckCircle, BarChart2 } from 'lucide-react';
+import { Download, Calendar, TrendingUp, CheckCircle, BarChart2, Lock } from 'lucide-react';
 
 export const TelecallerReports: React.FC = () => {
   const user = db.getCurrentUser();
@@ -118,17 +118,23 @@ export const TelecallerReports: React.FC = () => {
             </div>
           )}
 
-          <div className="flex items-center border border-slate-300 rounded-lg overflow-hidden bg-white text-xs font-semibold">
+          {/* Export disabled for telecallers */}
+          <div
+            className="flex items-center border border-slate-200 rounded-lg overflow-hidden bg-slate-100 text-xs font-semibold cursor-not-allowed opacity-75 shadow-2xs"
+            title="Export disabled for Telecallers by Administrator Policy"
+          >
             <button
-              onClick={() => handleExport('xlsx')}
-              className="px-3 py-2 hover:bg-slate-50 text-slate-700 flex items-center space-x-1 border-r border-slate-200"
+              type="button"
+              disabled
+              className="px-3 py-2 text-slate-400 cursor-not-allowed flex items-center space-x-1.5 border-r border-slate-200"
             >
-              <Download className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Excel (.xlsx)</span>
+              <Lock className="w-3.5 h-3.5 text-slate-400" />
+              <span>Excel (Disabled)</span>
             </button>
             <button
-              onClick={() => handleExport('csv')}
-              className="px-3 py-2 hover:bg-slate-50 text-slate-700"
+              type="button"
+              disabled
+              className="px-3 py-2 text-slate-400 cursor-not-allowed"
             >
               CSV
             </button>

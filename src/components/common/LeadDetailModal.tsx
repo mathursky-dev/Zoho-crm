@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Lead, LeadActivity } from '../../types/crm';
 import { db } from '../../lib/database';
-import { X, Phone, Calendar, Clock, User, Tag, MapPin, DollarSign, History, AlertCircle } from 'lucide-react';
+import { X, Phone, Calendar, Clock, User, Tag, MapPin, DollarSign, History, AlertCircle, Unlock, Eye } from 'lucide-react';
 
 interface Props {
   lead: Lead | null;
@@ -12,8 +12,17 @@ interface Props {
 export const LeadDetailModal: React.FC<Props> = ({ lead, onClose, onOpenUpdate }) => {
   if (!lead) return null;
 
-  const activities: LeadActivity[] = db.getLeadActivities(lead.id);
-  const assignments = db.getLeadAssignments(lead.id);
+  const [currentLead, setCurrentLead] = useState<Lead>(lead);
+
+  const handleUnlock = () => {
+    const res = db.unlockLeadMobile(currentLead.id);
+    if (res.lead) {
+      setCurrentLead(res.lead);
+    }
+  };
+
+  const activities: LeadActivity[] = db.getLeadActivities(currentLead.id);
+  const assignments = db.getLeadAssignments(currentLead.id);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -89,9 +98,27 @@ export const LeadDetailModal: React.FC<Props> = ({ lead, onClose, onOpenUpdate }
                     <Phone className="w-3.5 h-3.5 text-blue-600" />
                     <span>Primary Mobile:</span>
                   </span>
-                  <a href={`tel:${lead.mobile}`} className="font-semibold text-blue-600 hover:underline">
-                    {lead.mobile}
-                  </a>
+                  <div className="flex items-center space-x-2">
+                    <a href={`tel:${currentLead.mobile}`} className="font-semibold text-blue-600 hover:underline">
+                      {currentLead.mobile}
+                    </a>
+                    <button
+                      type="button"
+                      onClick={handleUnlock}
+                      className="inline-flex items-center space-x-1 px-2 py-0.5 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded text-[11px] font-bold text-blue-700 transition-colors"
+                      title="Click to log and count mobile view"
+                    >
+                      <Unlock className="w-3 h-3 text-blue-600" />
+                      <span>Unblock (+1)</span>
+                    </button>
+                    {currentLead.mobile_unlock_count && currentLead.mobile_unlock_count > 0 ? (
+                      <span className="text-[10px] font-bold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                        {currentLead.mobile_unlock_count} unlocks
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-slate-400">0 unlocks</span>
+                    )}
+                  </div>
                 </div>
                 {lead.alt_mobile && (
                   <div className="flex items-center justify-between">

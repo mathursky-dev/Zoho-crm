@@ -19,6 +19,8 @@ import {
   Clock,
   AlertTriangle,
   Trash2,
+  Unlock,
+  Phone,
 } from 'lucide-react';
 
 interface Props {
@@ -692,9 +694,23 @@ export const AllLeads: React.FC<Props> = ({
                         )}
                       </td>
 
-                      {/* Mobile */}
+                      {/* Mobile with unlock count */}
                       <td className="p-3">
-                        <span className="font-mono text-slate-800 font-medium">{lead.mobile}</span>
+                        <div className="font-mono text-slate-900 font-semibold">{lead.mobile}</div>
+                        {lead.mobile_unlock_count && lead.mobile_unlock_count > 0 ? (
+                          <div
+                            className="mt-0.5 inline-flex items-center space-x-1 px-1.5 py-0.5 bg-amber-50 text-amber-800 border border-amber-200 rounded text-[10px] font-bold"
+                            title={`Unlocked ${lead.mobile_unlock_count} time(s)${lead.mobile_unlocked_by ? ` by ${lead.mobile_unlocked_by}` : ''}`}
+                          >
+                            <Unlock className="w-2.5 h-2.5 text-amber-600" />
+                            <span>Unlocked {lead.mobile_unlock_count}x</span>
+                            {lead.mobile_unlocked_by && (
+                              <span className="text-slate-500 font-normal">({lead.mobile_unlocked_by.split(' ')[0]})</span>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="mt-0.5 text-[10px] text-slate-400">0 unlocks</div>
+                        )}
                       </td>
 
                       {/* Department */}

@@ -1893,6 +1893,61 @@ export class DatabaseService {
     return { success: true, lead: updatedLead };
   }
 
+  // --- MOBILE NUMBER UNLOCK TRACKING & AUDIT ---
+  public unlockLeadMobile(leadId: string): { success: boolean; lead: Lead | null; unlockCount: number } {
+    const user = this.getCurrentUser();
+    const index = this.leads.findIndex(l => l.id === leadId);
+    if (index === -1) return { success: false, lead: null, unlockCount: 0 };
+
+    const lead = this.leads[index];
+    const newCount = (lead.mobile_unlock_count || 0) + 1;
+    const now = new Date().toISOString();
+
+    const updatedLead: Lead = {
+      ...lead,
+      mobile_unlock_count: newCount,
+      mobile_unlocked_at: now,
+      mobile_unlocked_by: user.full_name,
+    };
+
+    this.leads[index] = updatedLead;
+    setStorage('leads', this.leads);
+
+    // Record an audit activity
+    const act: LeadActivity = {
+      id: `act-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      lead_id: lead.id,
+      user_id: user.id,
+      user_name: user.full_name,
+      status: lead.status,
+      remark: `Mobile number unlocked by ${user.full_name} (Unlock #${newCount})`,
+      created_at: now,
+    };
+    this.activities.unshift(act);
+    setStorage('activities', this.activities);
+
+    const supabase = getSupabase();
+    if (supabase) {
+      supabase.from('leads').update({
+        mobile_unlock_count: newCount,
+        mobile_unlocked_at: now,
+        mobile_unlocked_by: user.full_name,
+      }).eq('id', leadId).then();
+
+      supabase.from('lead_activities').insert([{
+        id: act.id,
+        lead_id: act.lead_id,
+        user_id: act.user_id,
+        user_name: act.user_name,
+        status: act.status,
+        remark: act.remark,
+        created_at: act.created_at,
+      }]).then();
+    }
+
+    return { success: true, lead: updatedLead, unlockCount: newCount };
+  }
+
   // --- ACTIVITIES ---
   public getLeadActivities(leadId: string): LeadActivity[] {
     const lead = this.getLeadById(leadId);

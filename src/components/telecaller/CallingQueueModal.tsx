@@ -18,6 +18,8 @@ import {
   AlertCircle,
   Tag,
   MapPin,
+  Unlock,
+  Eye,
 } from 'lucide-react';
 
 interface Props {
@@ -222,12 +224,23 @@ export const CallingQueueModal: React.FC<Props> = ({
 
               {/* Call Control Card */}
               <div className="pt-2 border-t border-slate-100 space-y-2">
-                <div className="text-xs text-slate-500">Primary Mobile</div>
+                <div className="flex items-center justify-between text-xs text-slate-500">
+                  <span>Primary Mobile</span>
+                  {currentLead.mobile_unlock_count && currentLead.mobile_unlock_count > 0 ? (
+                    <span className="text-[10px] font-bold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 flex items-center space-x-1">
+                      <Eye className="w-2.5 h-2.5 text-amber-600" />
+                      <span>Unlocked {currentLead.mobile_unlock_count}x</span>
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-slate-400">0 unlocks</span>
+                  )}
+                </div>
                 <div className="text-xl font-bold font-mono text-slate-900 flex items-center justify-between">
                   <span>{currentLead.mobile}</span>
                   <a
                     href={`tel:${currentLead.mobile}`}
                     onClick={() => {
+                      db.unlockLeadMobile(currentLead.id);
                       if (!callActive) setCallActive(true);
                     }}
                     className="p-2 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-full transition-colors"
