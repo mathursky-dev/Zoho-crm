@@ -765,24 +765,82 @@ export class DatabaseService {
       }
 
       // Execute real Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      let { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: targetEmail,
         password: cleanPass,
       });
 
-      if (authError || !authData.user) {
+      // If signIn failed, check if this is one of our default system accounts
+      if (authError || !authData?.user) {
+        const defaultMatch = DEFAULT_USERS.find(
+          u => (u.email.toLowerCase() === targetEmail.toLowerCase() || (u.username && u.username.toLowerCase() === cleanId.toLowerCase())) && u.password === cleanPass
+        );
+
+        if (defaultMatch) {
+          // Attempt to auto-register this default user in Supabase Auth
+          const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
+            email: defaultMatch.email,
+            password: cleanPass,
+            options: {
+              data: {
+                full_name: defaultMatch.full_name,
+                username: defaultMatch.username,
+                role: defaultMatch.role,
+              },
+            },
+          });
+
+          if (!signUpErr && signUpData?.user) {
+            // Upsert profile in Supabase profiles table
+            await supabase.from('profiles').upsert([{
+              id: signUpData.user.id,
+              email: defaultMatch.email,
+              full_name: defaultMatch.full_name,
+              username: defaultMatch.username,
+              role: defaultMatch.role,
+              phone: defaultMatch.phone,
+              is_active: true,
+              created_at: new Date().toISOString(),
+            }]);
+
+            // Re-attempt sign in
+            const retryRes = await supabase.auth.signInWithPassword({
+              email: defaultMatch.email,
+              password: cleanPass,
+            });
+            authData = retryRes.data;
+            authError = retryRes.error;
+          }
+        }
+      }
+
+      if (authError || !authData?.user) {
         return { error: authError?.message || 'Invalid User ID / Email or password.' };
       }
 
       // Fetch profile from Supabase profiles table
-      const { data: profile, error: profError } = await supabase
+      let { data: profile, error: profError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', authData.user.id)
         .single();
 
       if (profError || !profile) {
-        return { error: 'User profile not found in Supabase database. Please contact your administrator.' };
+        // Fallback: create profile from user metadata or DEFAULT_USERS match
+        const defaultMatch = DEFAULT_USERS.find(u => u.email.toLowerCase() === targetEmail.toLowerCase() || (u.username && u.username.toLowerCase() === cleanId.toLowerCase()));
+        const userMeta = authData.user.user_metadata || {};
+        const newProf = {
+          id: authData.user.id,
+          email: authData.user.email || targetEmail,
+          full_name: userMeta.full_name || defaultMatch?.full_name || 'CRM User',
+          username: userMeta.username || defaultMatch?.username || targetEmail.split('@')[0],
+          role: userMeta.role || defaultMatch?.role || (targetEmail.includes('admin') ? 'admin' : 'telecaller'),
+          phone: defaultMatch?.phone || '',
+          is_active: true,
+          created_at: new Date().toISOString(),
+        };
+        await supabase.from('profiles').upsert([newProf]);
+        profile = newProf as any;
       }
 
       const isActive = profile.is_active !== undefined ? profile.is_active : (profile.active !== undefined ? profile.active : true);
