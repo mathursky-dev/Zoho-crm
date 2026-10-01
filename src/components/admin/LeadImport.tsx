@@ -50,9 +50,11 @@ export const LeadImport: React.FC<Props> = ({ onNavigate }) => {
 
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState<1 | 2 | 3>(1); // 1: Upload, 2: Map & Preview, 3: Completed
+  const [errorBanner, setErrorBanner] = useState<string | null>(null);
 
   // Handle file upload & parsing
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setErrorBanner(null);
     const uploadedFile = e.target.files?.[0];
     if (!uploadedFile) return;
 
@@ -78,6 +80,12 @@ export const LeadImport: React.FC<Props> = ({ onNavigate }) => {
             return obj;
           }).filter(r => Object.values(r).some(v => v !== ''));
 
+          if (rows.length === 0) {
+            setErrorBanner('Uploaded file contains headers but no data rows.');
+            setLoading(false);
+            return;
+          }
+
           setColumns(headerRow);
           setParsedData(rows);
 
@@ -98,10 +106,12 @@ export const LeadImport: React.FC<Props> = ({ onNavigate }) => {
           }
 
           setStep(2);
+        } else {
+          setErrorBanner('The uploaded spreadsheet is empty.');
         }
       } catch (err) {
         console.error('File parsing error', err);
-        alert('Could not parse file. Please upload a valid CSV or Excel file.');
+        setErrorBanner('Could not parse file. Please upload a valid CSV or Excel file.');
       } finally {
         setLoading(false);
       }
@@ -132,21 +142,28 @@ export const LeadImport: React.FC<Props> = ({ onNavigate }) => {
   };
 
   const handleConfirmImport = async () => {
+    setErrorBanner(null);
     if (!mapping.customer_name || !mapping.mobile) {
-      alert('Please map both Customer Name and Mobile columns.');
+      setErrorBanner('Please map both Customer Name and Mobile columns before proceeding.');
       return;
     }
 
     if (!selectedDeptId) {
-      alert('Please select a target Department.');
+      setErrorBanner('Please select a target Department.');
       return;
     }
 
     setLoading(true);
-    const result = await db.importLeads(parsedData, selectedDeptId, mapping);
-    setImportResult(result);
-    setLoading(false);
-    setStep(3);
+    try {
+      const result = await db.importLeads(parsedData, selectedDeptId, mapping);
+      setImportResult(result);
+      setStep(3);
+    } catch (err: any) {
+      console.error('Import error:', err);
+      setErrorBanner(err?.message || 'Failed to import leads. Please check your data format.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDownloadSample = () => {
@@ -187,6 +204,20 @@ export const LeadImport: React.FC<Props> = ({ onNavigate }) => {
           </button>
         </div>
       </div>
+
+      {/* Error Banner */}
+      {errorBanner && (
+        <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs font-semibold text-red-700 flex items-center justify-between shadow-2xs animate-in fade-in duration-150">
+          <div className="flex items-center space-x-2">
+            <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+            <span>{errorBanner}</span>
+          </div>
+          <button onClick={() => setErrorBanner(null)} className="text-red-500 hover:text-red-700">
+            <span className="sr-only">Dismiss</span>
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* STEP 1: UPLOAD */}
       {step === 1 && (
@@ -464,6 +495,55 @@ export const LeadImport: React.FC<Props> = ({ onNavigate }) => {
               <span className="text-lg font-bold text-slate-800">{importResult.skippedRows - importResult.duplicateMobiles.length}</span>
             </div>
           </div>
+
+          {/* Newly Imported Leads Preview Table */}
+          {importResult.createdLeads && importResult.createdLeads.length > 0 && (
+            <div className="max-w-2xl mx-auto text-left space-y-2 pt-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-600">
+                  Newly Created Leads ({importResult.createdLeads.length})
+                </span>
+                <span className="text-[11px] text-slate-400">All registered as Unassigned</span>
+              </div>
+              <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
+                    <tr>
+                      <th className="p-2.5">Lead Code</th>
+                      <th className="p-2.5">Customer Name</th>
+                      <th className="p-2.5">Mobile</th>
+                      <th className="p-2.5">Department</th>
+                      <th className="p-2.5">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {importResult.createdLeads.slice(0, 5).map(lead => (
+                      <tr key={lead.id} className="hover:bg-slate-50">
+                        <td className="p-2.5 font-mono font-bold text-blue-600">{lead.lead_code}</td>
+                        <td className="p-2.5 font-bold text-slate-800">{lead.customer_name}</td>
+                        <td className="p-2.5 font-mono text-slate-700">{lead.mobile}</td>
+                        <td className="p-2.5">
+                          <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-[11px] font-medium">
+                            {lead.department_name || 'General'}
+                          </span>
+                        </td>
+                        <td className="p-2.5">
+                          <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-medium">
+                            {lead.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {importResult.createdLeads.length > 5 && (
+                  <div className="p-2 text-center text-[11px] text-slate-400 bg-slate-50 border-t border-slate-100">
+                    + {importResult.createdLeads.length - 5} more lead(s) imported
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
             <button

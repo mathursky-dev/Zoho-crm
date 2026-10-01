@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Department } from '../../types/crm';
 import { db } from '../../lib/database';
-import { Building2, Plus, Edit2, Check, X, Shield, Power, RefreshCw, CheckCircle } from 'lucide-react';
+import { Building2, Plus, Edit2, Check, X, Shield, Power, RefreshCw, CheckCircle, Trash2, AlertTriangle } from 'lucide-react';
 
 export const DepartmentMaster: React.FC = () => {
   const [departments, setDepartments] = useState<Department[]>(db.getDepartments(true));
@@ -14,6 +14,9 @@ export const DepartmentMaster: React.FC = () => {
   const [description, setDescription] = useState('');
   const [isActive, setIsActive] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Delete modal state
+  const [deptToDelete, setDeptToDelete] = useState<Department | null>(null);
 
   // Sync state
   const [syncingSupabase, setSyncingSupabase] = useState(false);
@@ -81,6 +84,7 @@ export const DepartmentMaster: React.FC = () => {
           setError(res.error);
           return;
         }
+        setSyncFeedback(`Department "${name.trim()}" updated successfully.`);
       } else {
         const res = await db.addDepartment({
           name: name.trim(),
@@ -92,13 +96,30 @@ export const DepartmentMaster: React.FC = () => {
           setError(res.error);
           return;
         }
+        setSyncFeedback(`Department "${name.trim()}" created successfully!`);
       }
 
       setIsModalOpen(false);
-      await refreshList();
+      setDepartments(db.getDepartments(true));
+      // Background sync so user sees department immediately without waiting
+      db.syncFromSupabase().then(() => {
+        setDepartments(db.getDepartments(true));
+      });
     } catch (err: any) {
       setError(err?.message || 'Failed to save department in database.');
     }
+  };
+
+  const confirmDelete = async () => {
+    if (!deptToDelete) return;
+    const res = await db.deleteDepartment(deptToDelete.id);
+    if (!res.success) {
+      setSyncFeedback(res.message || 'Could not delete department.');
+    } else {
+      setSyncFeedback(`Department "${deptToDelete.name}" deleted successfully.`);
+      setDepartments(db.getDepartments(true));
+    }
+    setDeptToDelete(null);
   };
 
   const toggleStatus = async (dept: Department) => {
@@ -199,13 +220,24 @@ export const DepartmentMaster: React.FC = () => {
                     </button>
                   </td>
                   <td className="p-3 text-right">
-                    <button
-                      onClick={() => openEditModal(dept)}
-                      className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                      title="Edit Department"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex items-center justify-end space-x-1">
+                      <button
+                        onClick={() => openEditModal(dept)}
+                        className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="Edit Department"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      {leadCount === 0 && (
+                        <button
+                          onClick={() => setDeptToDelete(dept)}
+                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Delete Department"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );
@@ -304,6 +336,44 @@ export const DepartmentMaster: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Delete Confirmation Modal */}
+      {deptToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden border border-slate-200 p-6 space-y-4">
+            <div className="flex items-center space-x-3 text-red-600">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h4 className="font-bold text-sm text-slate-900">Delete Department</h4>
+                <p className="text-xs text-slate-500">Are you sure you want to remove this department?</p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs">
+              <div className="font-bold text-slate-900">{deptToDelete.name}</div>
+              <div className="font-mono text-slate-500 text-[11px] mt-0.5">Code: {deptToDelete.code}</div>
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeptToDelete(null)}
+                className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                className="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg shadow-xs"
+              >
+                Delete
+              </button>
+            </div>
           </div>
         </div>
       )}

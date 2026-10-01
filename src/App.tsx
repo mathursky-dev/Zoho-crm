@@ -350,13 +350,19 @@ export default function App() {
                 {currentView === 'import' && (
                   <LeadImport
                     key={refreshKey}
-                    onNavigate={view => navigateTo(view)}
+                    onNavigate={view => {
+                      refreshData();
+                      navigateTo(view);
+                    }}
                   />
                 )}
                 {currentView === 'assign' && (
                   <ManualAssignment
                     key={refreshKey}
-                    onNavigate={view => navigateTo(view)}
+                    onNavigate={view => {
+                      refreshData();
+                      navigateTo(view);
+                    }}
                   />
                 )}
                 {currentView === 'departments' && (

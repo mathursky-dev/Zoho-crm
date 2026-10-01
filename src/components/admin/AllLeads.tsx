@@ -42,6 +42,22 @@ export const AllLeads: React.FC<Props> = ({
   // Summary Metrics
   const summary = db.getAdminLeadPoolSummary();
 
+  const [syncing, setSyncing] = useState(false);
+  const [refreshCount, setRefreshCount] = useState(0);
+
+  const handleRefresh = async () => {
+    setSyncing(true);
+    await db.syncFromSupabase();
+    setSyncing(false);
+    setRefreshCount(c => c + 1);
+  };
+
+  React.useEffect(() => {
+    db.syncFromSupabase().then(() => {
+      setRefreshCount(c => c + 1);
+    });
+  }, []);
+
   // Search & Filter state
   const [search, setSearch] = useState('');
   const [departmentId, setDepartmentId] = useState('');
@@ -300,6 +316,16 @@ export const AllLeads: React.FC<Props> = ({
 
         {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleRefresh}
+            disabled={syncing}
+            className="inline-flex items-center space-x-1.5 px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg border border-slate-300 shadow-2xs transition-colors disabled:opacity-50"
+            title="Refresh leads from database"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-blue-600 ${syncing ? 'animate-spin' : ''}`} />
+            <span>{syncing ? 'Refreshing...' : 'Refresh'}</span>
+          </button>
+
           {selectedIds.length > 0 && (
             <button
               onClick={() => setIsAssignModalOpen(true)}
@@ -652,7 +678,26 @@ export const AllLeads: React.FC<Props> = ({
               {leads.length === 0 ? (
                 <tr>
                   <td colSpan={13} className="p-8 text-center text-slate-400 text-xs">
-                    No leads match the specified search or filter criteria in the Admin Lead Pool.
+                    <div className="space-y-2 max-w-md mx-auto">
+                      <p className="text-slate-500 font-medium">
+                        No leads match the specified search or filter criteria in the Admin Lead Pool.
+                      </p>
+                      {summary.totalLeads > 0 && (
+                        <p className="text-slate-400 text-[11px]">
+                          There are currently <span className="font-bold text-slate-700">{summary.totalLeads}</span> total lead(s) in the CRM pool. One or more active filters may be filtering them out.
+                        </p>
+                      )}
+                      {(search || departmentId || userId || status || product || source || assignmentStatus !== 'all' || importDateRange !== 'all' || assignedDateRange !== 'all') && (
+                        <div className="pt-1">
+                          <button
+                            onClick={resetFilters}
+                            className="px-3.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 font-bold rounded-lg transition-colors border border-blue-200"
+                          >
+                            Reset All Filters
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ) : (
