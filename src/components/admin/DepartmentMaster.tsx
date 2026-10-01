@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Department } from '../../types/crm';
 import { db } from '../../lib/database';
-import { Building2, Plus, Edit2, Check, X, Shield, Power } from 'lucide-react';
+import { Building2, Plus, Edit2, Check, X, Shield, Power, RefreshCw, CheckCircle } from 'lucide-react';
 
 export const DepartmentMaster: React.FC = () => {
   const [departments, setDepartments] = useState<Department[]>(db.getDepartments(true));
@@ -15,6 +15,10 @@ export const DepartmentMaster: React.FC = () => {
   const [isActive, setIsActive] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Sync state
+  const [syncingSupabase, setSyncingSupabase] = useState(false);
+  const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
+
   const refreshList = async () => {
     await db.syncFromSupabase();
     setDepartments(db.getDepartments(true));
@@ -23,6 +27,20 @@ export const DepartmentMaster: React.FC = () => {
   React.useEffect(() => {
     refreshList();
   }, []);
+
+  const handleSyncToSupabase = async () => {
+    setSyncingSupabase(true);
+    setSyncFeedback(null);
+    try {
+      const res = await db.ensureDepartmentsInSupabase();
+      setSyncFeedback(res.message);
+      await refreshList();
+    } catch (err: any) {
+      setSyncFeedback(err?.message || 'Failed to sync departments to Supabase');
+    } finally {
+      setSyncingSupabase(false);
+    }
+  };
 
   const openAddModal = () => {
     setEditingDept(null);
@@ -84,11 +102,16 @@ export const DepartmentMaster: React.FC = () => {
   };
 
   const toggleStatus = async (dept: Department) => {
-    const newActiveState = !dept.is_active;
-    await db.updateDepartment(dept.id, { is_active: newActiveState });
-    setDepartments(prev =>
-      prev.map(item => (item.id === dept.id ? { ...item, is_active: newActiveState } : item))
-    );
+    try {
+      const newActiveState = !dept.is_active;
+      // Optimistic local state update
+      setDepartments(prev =>
+        prev.map(item => (item.id === dept.id ? { ...item, is_active: newActiveState } : item))
+      );
+      await db.updateDepartment(dept.id, { is_active: newActiveState });
+    } catch (err) {
+      console.warn('Error toggling department status:', err);
+    }
   };
 
   return (
@@ -100,14 +123,37 @@ export const DepartmentMaster: React.FC = () => {
             Add, edit, activate or deactivate departments. Each user and lead is mapped to a department.
           </p>
         </div>
-        <button
-          onClick={openAddModal}
-          className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-xs transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Add Department</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleSyncToSupabase}
+            disabled={syncingSupabase}
+            className="inline-flex items-center space-x-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold rounded-lg shadow-xs transition-colors"
+            title="Push default standard departments to Supabase database"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${syncingSupabase ? 'animate-spin' : ''}`} />
+            <span>{syncingSupabase ? 'Syncing...' : 'Sync to Supabase'}</span>
+          </button>
+          <button
+            onClick={openAddModal}
+            className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-xs transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add Department</span>
+          </button>
+        </div>
       </div>
+
+      {syncFeedback && (
+        <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs px-4 py-2.5 rounded-lg shadow-2xs">
+          <div className="flex items-center space-x-2">
+            <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{syncFeedback}</span>
+          </div>
+          <button onClick={() => setSyncFeedback(null)} className="text-emerald-500 hover:text-emerald-700">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Departments Table */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">

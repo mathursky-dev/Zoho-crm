@@ -12,6 +12,7 @@ import {
   GripVertical,
   ListOrdered,
   CheckCircle2,
+  RefreshCw,
 } from 'lucide-react';
 
 export const StatusMaster: React.FC = () => {
@@ -25,6 +26,7 @@ export const StatusMaster: React.FC = () => {
   const [isActive, setIsActive] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [orderToast, setOrderToast] = useState<string | null>(null);
+  const [syncingSupabase, setSyncingSupabase] = useState(false);
 
   // Drag and drop state
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -45,6 +47,19 @@ export const StatusMaster: React.FC = () => {
   React.useEffect(() => {
     refresh();
   }, []);
+
+  const handleSyncToSupabase = async () => {
+    setSyncingSupabase(true);
+    try {
+      const res = await db.ensureStatusesInSupabase();
+      showToast(res.message);
+      await refresh();
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to sync statuses to Supabase');
+    } finally {
+      setSyncingSupabase(false);
+    }
+  };
 
   const openAdd = () => {
     setEditingStatus(null);
@@ -108,11 +123,15 @@ export const StatusMaster: React.FC = () => {
 
   // Toggle active/inactive in 1 single click
   const toggleStatus = async (s: LeadStatus) => {
-    const newActiveState = !s.is_active;
-    await db.updateStatus(s.id, { is_active: newActiveState });
-    setStatuses(prev =>
-      prev.map(item => (item.id === s.id ? { ...item, is_active: newActiveState } : item))
-    );
+    try {
+      const newActiveState = !s.is_active;
+      setStatuses(prev =>
+        prev.map(item => (item.id === s.id ? { ...item, is_active: newActiveState } : item))
+      );
+      await db.updateStatus(s.id, { is_active: newActiveState });
+    } catch (err) {
+      console.warn('Error toggling status active state:', err);
+    }
   };
 
   // Move status up or down
@@ -181,6 +200,17 @@ export const StatusMaster: React.FC = () => {
         </div>
 
         <div className="flex items-center space-x-2">
+          <button
+            type="button"
+            onClick={handleSyncToSupabase}
+            disabled={syncingSupabase}
+            className="inline-flex items-center space-x-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold rounded-lg shadow-xs transition-colors"
+            title="Push default statuses to Supabase database"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${syncingSupabase ? 'animate-spin' : ''}`} />
+            <span>{syncingSupabase ? 'Syncing...' : 'Sync to Supabase'}</span>
+          </button>
+
           <button
             type="button"
             onClick={handleAutoSequence}

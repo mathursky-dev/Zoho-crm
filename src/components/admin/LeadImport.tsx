@@ -31,6 +31,12 @@ export const LeadImport: React.FC<Props> = ({ onNavigate }) => {
   const [columns, setColumns] = useState<string[]>([]);
   const [selectedDeptId, setSelectedDeptId] = useState(departments[0]?.id || '');
 
+  React.useEffect(() => {
+    if ((!selectedDeptId || selectedDeptId === 'dept-1' || selectedDeptId.startsWith('dept-')) && departments.length > 0) {
+      setSelectedDeptId(departments[0].id);
+    }
+  }, [departments, selectedDeptId]);
+
   // Dynamic Column Mapping: field_key -> selected Excel column name
   const [mapping, setMapping] = useState<Record<string, string>>({});
 

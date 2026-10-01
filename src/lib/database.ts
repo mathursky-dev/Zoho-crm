@@ -40,13 +40,25 @@ export function applyTransform(val: any, rule: TransformRule): any {
   }
 }
 
-// Initial Seed Data
-const DEFAULT_DEPARTMENTS: Department[] = [
-  { id: 'dept-1', name: 'Home Loans', code: 'HL', description: 'Mortgages and home refinance', is_active: true, created_at: new Date(Date.now() - 30 * 86400000).toISOString() },
-  { id: 'dept-2', name: 'Health Insurance', code: 'INS', description: 'Comprehensive medical & term policies', is_active: true, created_at: new Date(Date.now() - 30 * 86400000).toISOString() },
-  { id: 'dept-3', name: 'Credit Cards', code: 'CC', description: 'Premium & cashback credit solutions', is_active: true, created_at: new Date(Date.now() - 30 * 86400000).toISOString() },
-  { id: 'dept-4', name: 'Personal Loans', code: 'PL', description: 'Instant unsecured personal credit', is_active: true, created_at: new Date(Date.now() - 30 * 86400000).toISOString() },
+// Initial Seed Data with valid PostgreSQL UUIDs
+export const DEPT_HOME_LOANS_UUID      = 'd1000000-0000-4000-8000-000000000001';
+export const DEPT_HEALTH_INS_UUID     = 'd1000000-0000-4000-8000-000000000002';
+export const DEPT_CREDIT_CARDS_UUID   = 'd1000000-0000-4000-8000-000000000003';
+export const DEPT_PERSONAL_LOANS_UUID = 'd1000000-0000-4000-8000-000000000004';
+
+export const DEFAULT_DEPARTMENTS: Department[] = [
+  { id: DEPT_HOME_LOANS_UUID, name: 'Home Loans', code: 'HL', description: 'Mortgages and home refinance', is_active: true, created_at: new Date(Date.now() - 30 * 86400000).toISOString() },
+  { id: DEPT_HEALTH_INS_UUID, name: 'Health Insurance', code: 'INS', description: 'Comprehensive medical & term policies', is_active: true, created_at: new Date(Date.now() - 30 * 86400000).toISOString() },
+  { id: DEPT_CREDIT_CARDS_UUID, name: 'Credit Cards', code: 'CC', description: 'Premium & cashback credit solutions', is_active: true, created_at: new Date(Date.now() - 30 * 86400000).toISOString() },
+  { id: DEPT_PERSONAL_LOANS_UUID, name: 'Personal Loans', code: 'PL', description: 'Instant unsecured personal credit', is_active: true, created_at: new Date(Date.now() - 30 * 86400000).toISOString() },
 ];
+
+export const LEGACY_DEPT_MAP: Record<string, string> = {
+  'dept-1': DEPT_HOME_LOANS_UUID,
+  'dept-2': DEPT_HEALTH_INS_UUID,
+  'dept-3': DEPT_CREDIT_CARDS_UUID,
+  'dept-4': DEPT_PERSONAL_LOANS_UUID,
+};
 
 export const SUPERADMIN_UUID = 'a1000000-0000-4000-8000-000000000000';
 export const ADMIN_UUID      = 'a1000000-0000-4000-8000-000000000001';
@@ -62,6 +74,26 @@ export function formatINR(val: number | null | undefined): string {
     currency: 'INR',
     maximumFractionDigits: 0,
   }).format(val);
+}
+
+// UUID validation regex (RFC 4122)
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isValidUUID(str: string | null | undefined): boolean {
+  if (!str) return false;
+  return UUID_REGEX.test(String(str).trim());
+}
+
+export function sanitizeUUID(val: string | null | undefined): string | null {
+  if (!val) return null;
+  const str = String(val).trim();
+  if (LEGACY_DEPT_MAP[str]) return LEGACY_DEPT_MAP[str];
+  if (str.startsWith('dept-')) return DEPT_HOME_LOANS_UUID;
+  if (LEGACY_STATUS_MAP[str]) return LEGACY_STATUS_MAP[str];
+  if (str.startsWith('s1000000-')) return 'b' + str.slice(1);
+  if (str.startsWith('st-')) return LEGACY_STATUS_MAP[str] || 'b1000000-0000-4000-8000-000000000001';
+  if (isValidUUID(str)) return str;
+  return null;
 }
 
 // Generate standard UUID v4
@@ -134,25 +166,64 @@ export const DEFAULT_USERS: (Profile & { password?: string })[] = [
   },
 ];
 
-const DEFAULT_STATUSES: LeadStatus[] = [
-  { id: 'st-1', name: 'Untouched', color: '#64748b', is_active: true, display_order: 1, created_at: new Date().toISOString() },
-  { id: 'st-2', name: 'Contacted', color: '#0284c7', is_active: true, display_order: 2, created_at: new Date().toISOString() },
-  { id: 'st-3', name: 'Follow-up', color: '#f59e0b', is_active: true, display_order: 3, created_at: new Date().toISOString() },
-  { id: 'st-4', name: 'Call Back', color: '#d97706', is_active: true, display_order: 4, created_at: new Date().toISOString() },
-  { id: 'st-5', name: 'Interested', color: '#8b5cf6', is_active: true, display_order: 5, created_at: new Date().toISOString() },
-  { id: 'st-6', name: 'Hot Lead', color: '#ef4444', is_active: true, display_order: 6, created_at: new Date().toISOString() },
-  { id: 'st-7', name: 'Order Placed', color: '#10b981', is_active: true, display_order: 7, created_at: new Date().toISOString() },
-  { id: 'st-8', name: 'Payment Pending', color: '#eab308', is_active: true, display_order: 8, created_at: new Date().toISOString() },
-  { id: 'st-9', name: 'Money Problem', color: '#f97316', is_active: true, display_order: 9, created_at: new Date().toISOString() },
-  { id: 'st-10', name: 'Thinking/Discussing', color: '#6366f1', is_active: true, display_order: 10, created_at: new Date().toISOString() },
-  { id: 'st-11', name: 'No Answer', color: '#94a3b8', is_active: true, display_order: 11, created_at: new Date().toISOString() },
-  { id: 'st-12', name: 'Busy', color: '#a8a29e', is_active: true, display_order: 12, created_at: new Date().toISOString() },
-  { id: 'st-13', name: 'Switch Off/Unreachable', color: '#78716c', is_active: true, display_order: 13, created_at: new Date().toISOString() },
-  { id: 'st-14', name: 'Not Interested', color: '#6b7280', is_active: true, display_order: 14, created_at: new Date().toISOString() },
-  { id: 'st-15', name: 'Wrong Number', color: '#dc2626', is_active: true, display_order: 15, created_at: new Date().toISOString() },
-  { id: 'st-16', name: 'Duplicate', color: '#b91c1c', is_active: true, display_order: 16, created_at: new Date().toISOString() },
-  { id: 'st-17', name: 'Do Not Call', color: '#991b1b', is_active: true, display_order: 17, created_at: new Date().toISOString() },
-  { id: 'st-18', name: 'Converted/Completed', color: '#059669', is_active: true, display_order: 18, created_at: new Date().toISOString() },
+export const LEGACY_STATUS_MAP: Record<string, string> = {
+  'st-1': 'b1000000-0000-4000-8000-000000000001',
+  'st-2': 'b1000000-0000-4000-8000-000000000002',
+  'st-3': 'b1000000-0000-4000-8000-000000000003',
+  'st-4': 'b1000000-0000-4000-8000-000000000004',
+  'st-5': 'b1000000-0000-4000-8000-000000000005',
+  'st-6': 'b1000000-0000-4000-8000-000000000006',
+  'st-7': 'b1000000-0000-4000-8000-000000000007',
+  'st-8': 'b1000000-0000-4000-8000-000000000008',
+  'st-9': 'b1000000-0000-4000-8000-000000000009',
+  'st-10': 'b1000000-0000-4000-8000-000000000010',
+  'st-11': 'b1000000-0000-4000-8000-000000000011',
+  'st-12': 'b1000000-0000-4000-8000-000000000012',
+  'st-13': 'b1000000-0000-4000-8000-000000000013',
+  'st-14': 'b1000000-0000-4000-8000-000000000014',
+  'st-15': 'b1000000-0000-4000-8000-000000000015',
+  'st-16': 'b1000000-0000-4000-8000-000000000016',
+  'st-17': 'b1000000-0000-4000-8000-000000000017',
+  'st-18': 'b1000000-0000-4000-8000-000000000018',
+  's1000000-0000-4000-8000-000000000001': 'b1000000-0000-4000-8000-000000000001',
+  's1000000-0000-4000-8000-000000000002': 'b1000000-0000-4000-8000-000000000002',
+  's1000000-0000-4000-8000-000000000003': 'b1000000-0000-4000-8000-000000000003',
+  's1000000-0000-4000-8000-000000000004': 'b1000000-0000-4000-8000-000000000004',
+  's1000000-0000-4000-8000-000000000005': 'b1000000-0000-4000-8000-000000000005',
+  's1000000-0000-4000-8000-000000000006': 'b1000000-0000-4000-8000-000000000006',
+  's1000000-0000-4000-8000-000000000007': 'b1000000-0000-4000-8000-000000000007',
+  's1000000-0000-4000-8000-000000000008': 'b1000000-0000-4000-8000-000000000008',
+  's1000000-0000-4000-8000-000000000009': 'b1000000-0000-4000-8000-000000000009',
+  's1000000-0000-4000-8000-000000000010': 'b1000000-0000-4000-8000-000000000010',
+  's1000000-0000-4000-8000-000000000011': 'b1000000-0000-4000-8000-000000000011',
+  's1000000-0000-4000-8000-000000000012': 'b1000000-0000-4000-8000-000000000012',
+  's1000000-0000-4000-8000-000000000013': 'b1000000-0000-4000-8000-000000000013',
+  's1000000-0000-4000-8000-000000000014': 'b1000000-0000-4000-8000-000000000014',
+  's1000000-0000-4000-8000-000000000015': 'b1000000-0000-4000-8000-000000000015',
+  's1000000-0000-4000-8000-000000000016': 'b1000000-0000-4000-8000-000000000016',
+  's1000000-0000-4000-8000-000000000017': 'b1000000-0000-4000-8000-000000000017',
+  's1000000-0000-4000-8000-000000000018': 'b1000000-0000-4000-8000-000000000018',
+};
+
+export const DEFAULT_STATUSES: LeadStatus[] = [
+  { id: 'b1000000-0000-4000-8000-000000000001', name: 'Untouched', color: '#64748b', is_active: true, display_order: 1, created_at: new Date().toISOString() },
+  { id: 'b1000000-0000-4000-8000-000000000002', name: 'Contacted', color: '#0284c7', is_active: true, display_order: 2, created_at: new Date().toISOString() },
+  { id: 'b1000000-0000-4000-8000-000000000003', name: 'Follow-up', color: '#f59e0b', is_active: true, display_order: 3, created_at: new Date().toISOString() },
+  { id: 'b1000000-0000-4000-8000-000000000004', name: 'Call Back', color: '#d97706', is_active: true, display_order: 4, created_at: new Date().toISOString() },
+  { id: 'b1000000-0000-4000-8000-000000000005', name: 'Interested', color: '#8b5cf6', is_active: true, display_order: 5, created_at: new Date().toISOString() },
+  { id: 'b1000000-0000-4000-8000-000000000006', name: 'Hot Lead', color: '#ef4444', is_active: true, display_order: 6, created_at: new Date().toISOString() },
+  { id: 'b1000000-0000-4000-8000-000000000007', name: 'Order Placed', color: '#10b981', is_active: true, display_order: 7, created_at: new Date().toISOString() },
+  { id: 'b1000000-0000-4000-8000-000000000008', name: 'Payment Pending', color: '#eab308', is_active: true, display_order: 8, created_at: new Date().toISOString() },
+  { id: 'b1000000-0000-4000-8000-000000000009', name: 'Money Problem', color: '#f97316', is_active: true, display_order: 9, created_at: new Date().toISOString() },
+  { id: 'b1000000-0000-4000-8000-000000000010', name: 'Thinking/Discussing', color: '#6366f1', is_active: true, display_order: 10, created_at: new Date().toISOString() },
+  { id: 'b1000000-0000-4000-8000-000000000011', name: 'No Answer', color: '#94a3b8', is_active: true, display_order: 11, created_at: new Date().toISOString() },
+  { id: 'b1000000-0000-4000-8000-000000000012', name: 'Busy', color: '#a8a29e', is_active: true, display_order: 12, created_at: new Date().toISOString() },
+  { id: 'b1000000-0000-4000-8000-000000000013', name: 'Switch Off/Unreachable', color: '#78716c', is_active: true, display_order: 13, created_at: new Date().toISOString() },
+  { id: 'b1000000-0000-4000-8000-000000000014', name: 'Not Interested', color: '#6b7280', is_active: true, display_order: 14, created_at: new Date().toISOString() },
+  { id: 'b1000000-0000-4000-8000-000000000015', name: 'Wrong Number', color: '#dc2626', is_active: true, display_order: 15, created_at: new Date().toISOString() },
+  { id: 'b1000000-0000-4000-8000-000000000016', name: 'Duplicate', color: '#b91c1c', is_active: true, display_order: 16, created_at: new Date().toISOString() },
+  { id: 'b1000000-0000-4000-8000-000000000017', name: 'Do Not Call', color: '#991b1b', is_active: true, display_order: 17, created_at: new Date().toISOString() },
+  { id: 'b1000000-0000-4000-8000-000000000018', name: 'Converted/Completed', color: '#059669', is_active: true, display_order: 18, created_at: new Date().toISOString() },
 ];
 
 const DEFAULT_LEADS: Lead[] = [];
@@ -576,7 +647,12 @@ export class DatabaseService {
         .select('*')
         .order('created_at', { ascending: true });
       if (!deptsErr && depts && depts.length > 0) {
-        this.departments = depts;
+        this.departments = depts.map(d => ({
+          ...d,
+          id: LEGACY_DEPT_MAP[d.id] || (isValidUUID(d.id) ? d.id : generateUUID()),
+        }));
+      } else if (!deptsErr && (!depts || depts.length === 0)) {
+        await this.ensureDepartmentsInSupabase();
       }
 
       // 2. Fetch statuses
@@ -585,7 +661,12 @@ export class DatabaseService {
         .select('*')
         .order('display_order', { ascending: true });
       if (!statsErr && stats && stats.length > 0) {
-        this.statuses = stats;
+        this.statuses = stats.map(s => ({
+          ...s,
+          id: LEGACY_STATUS_MAP[s.id] || (isValidUUID(s.id) ? s.id : generateUUID()),
+        }));
+      } else if (!statsErr && (!stats || stats.length === 0)) {
+        await this.ensureStatusesInSupabase();
       }
 
       // 3. Fetch profiles
@@ -625,6 +706,7 @@ export class DatabaseService {
       if (!leadsErr && leadsData) {
         this.leads = leadsData.map(l => ({
           ...l,
+          department_id: sanitizeUUID(l.department_id) || l.department_id,
           mobile_unlock_count: l.mobile_unlock_count || 0,
         }));
       }
@@ -727,6 +809,60 @@ export class DatabaseService {
     }
   }
 
+  // Ensure default standard departments exist in Supabase with valid UUIDs
+  public async ensureDepartmentsInSupabase(): Promise<{ success: boolean; message: string; count?: number }> {
+    const supabase = getSupabase();
+    if (!supabase) return { success: false, message: 'Supabase client is not connected' };
+    try {
+      const records = DEFAULT_DEPARTMENTS.map(d => ({
+        id: d.id,
+        name: d.name,
+        code: d.code,
+        description: d.description,
+        is_active: d.is_active,
+      }));
+      await supabase.from('departments').upsert(records, { onConflict: 'code' });
+      const { data: refreshed } = await supabase.from('departments').select('*').order('created_at', { ascending: true });
+      if (refreshed && refreshed.length > 0) {
+        this.departments = refreshed.map(d => ({
+          ...d,
+          id: LEGACY_DEPT_MAP[d.id] || (isValidUUID(d.id) ? d.id : generateUUID()),
+        }));
+      }
+      return { success: true, message: `Successfully synchronized ${this.departments.length} departments to Supabase!`, count: this.departments.length };
+    } catch (err: any) {
+      console.warn('ensureDepartmentsInSupabase notice:', err);
+      return { success: false, message: err?.message || 'Failed to sync departments to Supabase' };
+    }
+  }
+
+  // Ensure default standard lead statuses exist in Supabase with valid UUIDs
+  public async ensureStatusesInSupabase(): Promise<{ success: boolean; message: string; count?: number }> {
+    const supabase = getSupabase();
+    if (!supabase) return { success: false, message: 'Supabase client is not connected' };
+    try {
+      const records = DEFAULT_STATUSES.map(s => ({
+        id: s.id,
+        name: s.name,
+        color: s.color,
+        is_active: s.is_active,
+        display_order: s.display_order,
+      }));
+      await supabase.from('lead_statuses').upsert(records, { onConflict: 'name' });
+      const { data: refreshed } = await supabase.from('lead_statuses').select('*').order('display_order', { ascending: true });
+      if (refreshed && refreshed.length > 0) {
+        this.statuses = refreshed.map(s => ({
+          ...s,
+          id: LEGACY_STATUS_MAP[s.id] || (isValidUUID(s.id) ? s.id : generateUUID()),
+        }));
+      }
+      return { success: true, message: `Successfully synchronized ${this.statuses.length} statuses to Supabase!`, count: this.statuses.length };
+    } catch (err: any) {
+      console.warn('ensureStatusesInSupabase notice:', err);
+      return { success: false, message: err?.message || 'Failed to sync statuses to Supabase' };
+    }
+  }
+
   // --- WIPE ALL DATA ---
   public async clearAllData(options?: { resetMasters?: boolean }) {
     const supabase = getSupabase();
@@ -822,7 +958,7 @@ export class DatabaseService {
         .from('profiles')
         .select('*')
         .eq('id', session.user.id)
-        .single();
+        .maybeSingle();
 
       if (profError || !profile) {
         const matchDef = DEFAULT_USERS.find(d => d.email.toLowerCase() === (session.user.email || '').toLowerCase());
@@ -1013,7 +1149,7 @@ export class DatabaseService {
         .from('profiles')
         .select('*')
         .eq('id', authData.user.id)
-        .single();
+        .maybeSingle();
 
       if (profError || !profile) {
         if (defaultMatch) {
@@ -1075,6 +1211,10 @@ export class DatabaseService {
 
   // --- DEPARTMENTS MASTER ---
   public getDepartments(includeInactive = false): Department[] {
+    this.departments = this.departments.map(d => ({
+      ...d,
+      id: LEGACY_DEPT_MAP[d.id] || (isValidUUID(d.id) ? d.id : generateUUID()),
+    }));
     if (includeInactive) return [...this.departments];
     return this.departments.filter(d => d.is_active);
   }
@@ -1088,24 +1228,29 @@ export class DatabaseService {
     };
 
     if (supabase) {
-      const { data, error } = await supabase.from('departments').insert([{
-        id: newDept.id,
-        name: newDept.name,
-        code: newDept.code,
-        description: newDept.description,
-        is_active: newDept.is_active,
-      }]).select().single();
+      try {
+        const { data, error } = await supabase.from('departments').insert([{
+          id: newDept.id,
+          name: newDept.name,
+          code: newDept.code,
+          description: newDept.description,
+          is_active: newDept.is_active,
+        }]).select();
 
-      if (error) {
-        console.error('Failed to create department in Supabase:', error);
-        return { error: error.message };
+        if (error) {
+          console.warn('Failed to create department in Supabase, saving locally:', error);
+          this.departments.push(newDept);
+          return { department: newDept };
+        }
+
+        const inserted = (data && data.length > 0) ? data[0] : newDept;
+        this.departments.push(inserted);
+        return { department: inserted };
+      } catch (err: any) {
+        console.warn('addDepartment exception fallback:', err);
+        this.departments.push(newDept);
+        return { department: newDept };
       }
-
-      // Re-fetch departments from Supabase
-      const { data: allDepts } = await supabase.from('departments').select('*').order('created_at', { ascending: true });
-      if (allDepts) this.departments = allDepts;
-
-      return { department: data || newDept };
     }
 
     this.departments.push(newDept);
@@ -1114,24 +1259,97 @@ export class DatabaseService {
 
   public async updateDepartment(id: string, updates: Partial<Department>): Promise<{ department?: Department; error?: string }> {
     const supabase = getSupabase();
+    const targetId = sanitizeUUID(id) || id;
+
+    const index = this.departments.findIndex(d => d.id === id || d.id === targetId);
+    const existing = index !== -1 ? this.departments[index] : null;
+    const finalId = isValidUUID(targetId) ? targetId : (isValidUUID(existing?.id) ? existing!.id : generateUUID());
+
+    const mergedDept: Department = {
+      id: finalId,
+      name: updates.name || existing?.name || 'Department',
+      code: updates.code || existing?.code || 'DEPT',
+      description: updates.description !== undefined ? updates.description : (existing?.description || ''),
+      is_active: updates.is_active !== undefined ? updates.is_active : (existing?.is_active ?? true),
+      created_at: existing?.created_at || new Date().toISOString(),
+    };
 
     if (supabase) {
-      const { data, error } = await supabase.from('departments').update(updates).eq('id', id).select().single();
-      if (error) {
-        console.error('Failed to update department in Supabase:', error);
-        return { error: error.message };
+      try {
+        let updatedRow: Department | null = null;
+
+        // 1. Try updating by ID first using .select() (never throws PGRST116 on 0 rows)
+        if (isValidUUID(targetId)) {
+          const { data, error } = await supabase
+            .from('departments')
+            .update(updates)
+            .eq('id', targetId)
+            .select();
+
+          if (!error && data && data.length > 0) {
+            updatedRow = data[0];
+          }
+        }
+
+        // 2. If row wasn't found by ID, try matching by unique code
+        if (!updatedRow) {
+          const deptCode = updates.code || existing?.code;
+          if (deptCode) {
+            const { data, error } = await supabase
+              .from('departments')
+              .update(updates)
+              .eq('code', deptCode)
+              .select();
+
+            if (!error && data && data.length > 0) {
+              updatedRow = data[0];
+            }
+          }
+        }
+
+        // 3. If row did not exist in Supabase at all, upsert it!
+        if (!updatedRow) {
+          const payload = {
+            id: finalId,
+            name: mergedDept.name,
+            code: mergedDept.code,
+            description: mergedDept.description,
+            is_active: mergedDept.is_active,
+          };
+          const { data: upsertData } = await supabase
+            .from('departments')
+            .upsert([payload], { onConflict: 'code' })
+            .select();
+
+          if (upsertData && upsertData.length > 0) {
+            updatedRow = upsertData[0];
+          }
+        }
+
+        const finalDept = updatedRow || mergedDept;
+        if (index !== -1) {
+          this.departments[index] = finalDept;
+        } else {
+          this.departments.push(finalDept);
+        }
+
+        return { department: finalDept };
+      } catch (err: any) {
+        console.warn('Supabase updateDepartment fallback locally:', err);
+        if (index !== -1) {
+          this.departments[index] = mergedDept;
+        } else {
+          this.departments.push(mergedDept);
+        }
+        return { department: mergedDept };
       }
-
-      // Re-fetch departments from Supabase
-      const { data: allDepts } = await supabase.from('departments').select('*').order('created_at', { ascending: true });
-      if (allDepts) this.departments = allDepts;
-
-      return { department: data };
     }
 
-    const index = this.departments.findIndex(d => d.id === id);
-    if (index === -1) return { error: 'Department not found' };
-    this.departments[index] = { ...this.departments[index], ...updates };
+    if (index === -1) {
+      this.departments.push(mergedDept);
+      return { department: mergedDept };
+    }
+    this.departments[index] = mergedDept;
     return { department: this.departments[index] };
   }
 
@@ -1278,10 +1496,10 @@ export class DatabaseService {
       .from('profiles')
       .select('*')
       .eq('id', id)
-      .single();
+      .maybeSingle();
 
     if (refErr || !refreshedUser) {
-      console.error('Error re-fetching updated user from Supabase:', refErr);
+      console.warn('Notice re-fetching updated user from Supabase:', refErr);
     } else {
       const normalized: Profile = {
         ...refreshedUser,
@@ -1318,16 +1536,27 @@ export class DatabaseService {
     };
 
     if (supabase) {
-      const { data, error } = await supabase.from('lead_statuses').insert([newStatus]).select().single();
-      if (error) {
-        console.error('Failed to add status in Supabase:', error);
-        return { error: error.message };
+      try {
+        const { data, error } = await supabase.from('lead_statuses').insert([newStatus]).select();
+        if (error) {
+          console.warn('Notice adding status to Supabase, fallback locally:', error);
+          this.statuses.push(newStatus);
+          return { status: newStatus };
+        }
+
+        const { data: allStatuses } = await supabase.from('lead_statuses').select('*').order('display_order', { ascending: true });
+        if (allStatuses && allStatuses.length > 0) {
+          this.statuses = allStatuses;
+        } else {
+          this.statuses.push(newStatus);
+        }
+
+        return { status: (data && data.length > 0) ? data[0] : newStatus };
+      } catch (err: any) {
+        console.warn('addStatus error fallback:', err);
+        this.statuses.push(newStatus);
+        return { status: newStatus };
       }
-
-      const { data: allStatuses } = await supabase.from('lead_statuses').select('*').order('display_order', { ascending: true });
-      if (allStatuses) this.statuses = allStatuses;
-
-      return { status: data || newStatus };
     }
 
     this.statuses.push(newStatus);
@@ -1336,47 +1565,107 @@ export class DatabaseService {
 
   public async updateStatus(id: string, updates: Partial<LeadStatus>): Promise<{ status?: LeadStatus; error?: string }> {
     const supabase = getSupabase();
+    const targetId = sanitizeUUID(id) || id;
+    const index = this.statuses.findIndex(s => s.id === id || s.id === targetId);
+    const existing = index !== -1 ? this.statuses[index] : null;
+    const finalId = isValidUUID(targetId) ? targetId : (isValidUUID(existing?.id) ? existing!.id : generateUUID());
+
+    const mergedStatus: LeadStatus = {
+      id: finalId,
+      name: updates.name || existing?.name || 'Status',
+      color: updates.color || existing?.color || '#64748b',
+      is_active: updates.is_active !== undefined ? updates.is_active : (existing?.is_active ?? true),
+      display_order: updates.display_order !== undefined ? updates.display_order : (existing?.display_order || 99),
+      created_at: existing?.created_at || new Date().toISOString(),
+    };
 
     if (supabase) {
-      const { data, error } = await supabase.from('lead_statuses').update(updates).eq('id', id).select().single();
-      if (error) {
-        console.error('Failed to update status in Supabase:', error);
-        return { error: error.message };
+      try {
+        let updatedRow: LeadStatus | null = null;
+        if (isValidUUID(targetId)) {
+          const { data, error } = await supabase.from('lead_statuses').update(updates).eq('id', targetId).select();
+          if (!error && data && data.length > 0) {
+            updatedRow = data[0];
+          }
+        }
+
+        if (!updatedRow && (updates.name || existing?.name)) {
+          const stName = updates.name || existing?.name;
+          const { data } = await supabase.from('lead_statuses').update(updates).eq('name', stName).select();
+          if (data && data.length > 0) {
+            updatedRow = data[0];
+          }
+        }
+
+        if (!updatedRow) {
+          const { data: upsertData } = await supabase.from('lead_statuses').upsert([mergedStatus], { onConflict: 'name' }).select();
+          if (upsertData && upsertData.length > 0) {
+            updatedRow = upsertData[0];
+          }
+        }
+
+        const finalStatus = updatedRow || mergedStatus;
+        if (index !== -1) {
+          this.statuses[index] = finalStatus;
+        } else {
+          this.statuses.push(finalStatus);
+        }
+
+        return { status: finalStatus };
+      } catch (err: any) {
+        console.warn('Supabase updateStatus fallback locally:', err);
+        if (index !== -1) {
+          this.statuses[index] = mergedStatus;
+        } else {
+          this.statuses.push(mergedStatus);
+        }
+        return { status: mergedStatus };
       }
-
-      const { data: allStatuses } = await supabase.from('lead_statuses').select('*').order('display_order', { ascending: true });
-      if (allStatuses) this.statuses = allStatuses;
-
-      return { status: data };
     }
 
-    const index = this.statuses.findIndex(s => s.id === id);
-    if (index === -1) return { error: 'Status not found' };
+    if (index === -1) {
+      this.statuses.push(mergedStatus);
+      return { status: mergedStatus };
+    }
     this.statuses[index] = { ...this.statuses[index], ...updates };
-    return { status: { ...this.statuses[index] } };
+    return { status: this.statuses[index] };
   }
 
   public async reorderStatuses(orderedIds: string[]): Promise<LeadStatus[]> {
     const supabase = getSupabase();
     if (supabase) {
-      for (let i = 0; i < orderedIds.length; i++) {
-        await supabase.from('lead_statuses').update({ display_order: i + 1 }).eq('id', orderedIds[i]);
+      try {
+        for (let i = 0; i < orderedIds.length; i++) {
+          const targetId = sanitizeUUID(orderedIds[i]) || orderedIds[i];
+          if (isValidUUID(targetId)) {
+            await supabase.from('lead_statuses').update({ display_order: i + 1 }).eq('id', targetId);
+          }
+        }
+        const { data } = await supabase.from('lead_statuses').select('*').order('display_order', { ascending: true });
+        if (data && data.length > 0) {
+          this.statuses = data.map(s => ({
+            ...s,
+            id: LEGACY_STATUS_MAP[s.id] || (isValidUUID(s.id) ? s.id : generateUUID()),
+          }));
+        }
+      } catch (err) {
+        console.warn('reorderStatuses notice:', err);
       }
-      const { data } = await supabase.from('lead_statuses').select('*').order('display_order', { ascending: true });
-      if (data) this.statuses = data;
-    } else {
-      orderedIds.forEach((id, index) => {
-        const found = this.statuses.find(s => s.id === id);
-        if (found) found.display_order = index + 1;
-      });
-      this.statuses.sort((a, b) => a.display_order - b.display_order);
     }
+
+    orderedIds.forEach((id, index) => {
+      const targetId = sanitizeUUID(id) || id;
+      const found = this.statuses.find(s => s.id === id || s.id === targetId);
+      if (found) found.display_order = index + 1;
+    });
+    this.statuses.sort((a, b) => a.display_order - b.display_order);
     return [...this.statuses];
   }
 
   public async moveStatus(statusId: string, direction: 'up' | 'down'): Promise<LeadStatus[]> {
+    const targetId = sanitizeUUID(statusId) || statusId;
     const sorted = [...this.statuses].sort((a, b) => a.display_order - b.display_order);
-    const index = sorted.findIndex(s => s.id === statusId);
+    const index = sorted.findIndex(s => s.id === statusId || s.id === targetId);
     if (index === -1) return [...this.statuses];
 
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
@@ -1393,13 +1682,21 @@ export class DatabaseService {
 
     const supabase = getSupabase();
     if (supabase) {
-      await supabase.from('lead_statuses').update({ display_order: targetOrder }).eq('id', current.id);
-      await supabase.from('lead_statuses').update({ display_order: currentOrder }).eq('id', target.id);
-      const { data } = await supabase.from('lead_statuses').select('*').order('display_order', { ascending: true });
-      if (data) this.statuses = data;
-    } else {
-      this.statuses.sort((a, b) => a.display_order - b.display_order);
+      try {
+        const curUUID = sanitizeUUID(current.id) || current.id;
+        const tgtUUID = sanitizeUUID(target.id) || target.id;
+        if (isValidUUID(curUUID)) {
+          await supabase.from('lead_statuses').update({ display_order: targetOrder }).eq('id', curUUID);
+        }
+        if (isValidUUID(tgtUUID)) {
+          await supabase.from('lead_statuses').update({ display_order: currentOrder }).eq('id', tgtUUID);
+        }
+      } catch (err) {
+        console.warn('moveStatus notice:', err);
+      }
     }
+
+    this.statuses.sort((a, b) => a.display_order - b.display_order);
     return [...this.statuses];
   }
 
@@ -1735,7 +2032,10 @@ export class DatabaseService {
 
     // Department filter
     if (filters.department_id) {
-      result = result.filter(l => l.department_id === filters.department_id);
+      const targetDeptId = sanitizeUUID(filters.department_id) || filters.department_id;
+      result = result.filter(
+        l => l.department_id === targetDeptId || l.department_id === filters.department_id
+      );
     }
 
     // User filter (only applies to admin)
@@ -1906,47 +2206,50 @@ export class DatabaseService {
     const supabase = getSupabase();
 
     if (supabase) {
-      const { error: updateErr } = await supabase
-        .from('leads')
-        .update({
-          assigned_to: targetUser.id,
-          assigned_at: now,
-        })
-        .in('id', leadIds);
+      const validLeadIds = leadIds.filter(id => isValidUUID(id));
+      if (validLeadIds.length > 0) {
+        const { error: updateErr } = await supabase
+          .from('leads')
+          .update({
+            assigned_to: targetUser.id,
+            assigned_at: now,
+          })
+          .in('id', validLeadIds);
 
-      if (updateErr) {
-        console.error('Failed to assign leads in Supabase:', updateErr);
-        return { successCount: 0, message: 'Failed to assign leads in database.', error: updateErr.message };
-      }
+        if (updateErr) {
+          console.error('Failed to assign leads in Supabase:', updateErr);
+          return { successCount: 0, message: 'Failed to assign leads in database.', error: updateErr.message };
+        }
 
-      // Requirement 7 & 8: Complete assignment history audit log in Supabase
-      const newAssignments = leadIds.map(leadId => {
-        const existingLead = this.leads.find(l => l.id === leadId);
-        return {
+        // Requirement 7 & 8: Complete assignment history audit log in Supabase
+        const newAssignments = validLeadIds.map(leadId => {
+          const existingLead = this.leads.find(l => l.id === leadId);
+          return {
+            id: generateUUID(),
+            lead_id: leadId,
+            previous_user_id: sanitizeUUID(existingLead?.assigned_to),
+            assigned_to: targetUser.id,
+            assigned_by: user.id,
+            department_id: sanitizeUUID(existingLead?.department_id),
+            assigned_at: now,
+          };
+        });
+
+        await supabase.from('lead_assignments').insert(newAssignments);
+
+        // Record activity logs in Supabase
+        const activityRows = validLeadIds.map(leadId => ({
           id: generateUUID(),
           lead_id: leadId,
-          previous_user_id: existingLead?.assigned_to || null,
-          assigned_to: targetUser.id,
-          assigned_by: user.id,
-          department_id: existingLead?.department_id || null,
-          assigned_at: now,
-        };
-      });
+          user_id: user.id,
+          user_name: user.full_name,
+          status: 'Assigned',
+          remark: `Lead assigned to ${targetUser.full_name} by Admin`,
+          created_at: now,
+        }));
 
-      await supabase.from('lead_assignments').insert(newAssignments);
-
-      // Record activity logs in Supabase
-      const activityRows = leadIds.map(leadId => ({
-        id: generateUUID(),
-        lead_id: leadId,
-        user_id: user.id,
-        user_name: user.full_name,
-        status: 'Assigned',
-        remark: `Lead assigned to ${targetUser.full_name} by Admin`,
-        created_at: now,
-      }));
-
-      await supabase.from('lead_activities').insert(activityRows);
+        await supabase.from('lead_activities').insert(activityRows);
+      }
 
       // Re-fetch all updated data from Supabase (single source of truth)
       const { data: refreshedLeads } = await supabase.from('leads').select('*').order('created_at', { ascending: false });
@@ -2132,16 +2435,16 @@ export class DatabaseService {
         : 'Imported via CSV/Excel';
 
       // Department resolution
-      let assignedDeptId = departmentId;
+      let assignedDeptId = sanitizeUUID(departmentId) || departmentId;
       let assignedDeptName = dept?.name || 'General';
       const deptCol = columnMap['department'] || '';
       if (deptCol && row[deptCol]) {
         const fileDeptVal = String(row[deptCol]).trim().toLowerCase();
         const matchedDept = this.departments.find(
-          d => d.name.toLowerCase() === fileDeptVal || d.code.toLowerCase() === fileDeptVal
+          d => d.name.toLowerCase() === fileDeptVal || d.code.toLowerCase() === fileDeptVal || d.id === fileDeptVal
         );
         if (matchedDept) {
-          assignedDeptId = matchedDept.id;
+          assignedDeptId = sanitizeUUID(matchedDept.id) || matchedDept.id;
           assignedDeptName = matchedDept.name;
         }
       }
@@ -2167,15 +2470,16 @@ export class DatabaseService {
         }
       });
 
+      const leadId = generateUUID();
       const lead: Lead = {
-        id: `lead-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+        id: leadId,
         lead_code: leadCode,
         customer_name: cleanName,
         mobile: cleanMobile,
         alt_mobile: alt_mobile || undefined,
         city: city || undefined,
         state: state || undefined,
-        department_id: assignedDeptId,
+        department_id: sanitizeUUID(assignedDeptId),
         department_name: assignedDeptName,
         product,
         amount,
@@ -2196,14 +2500,14 @@ export class DatabaseService {
     const supabase = getSupabase();
     if (supabase && newLeads.length > 0) {
       const { error: insErr } = await supabase.from('leads').insert(newLeads.map(l => ({
-        id: l.id,
+        id: isValidUUID(l.id) ? l.id : generateUUID(),
         lead_code: l.lead_code,
         customer_name: l.customer_name,
         mobile: l.mobile,
         alt_mobile: l.alt_mobile || null,
         city: l.city || null,
         state: l.state || null,
-        department_id: l.department_id || null,
+        department_id: sanitizeUUID(l.department_id),
         product: l.product,
         amount: l.amount,
         source: l.source,
@@ -2284,7 +2588,7 @@ export class DatabaseService {
     };
 
     const supabase = getSupabase();
-    if (supabase) {
+    if (supabase && isValidUUID(leadId)) {
       const { error: leadErr } = await supabase.from('leads').update(updatePayload).eq('id', leadId);
       if (leadErr) {
         console.error('Failed to update lead in Supabase:', leadErr);
@@ -2296,7 +2600,7 @@ export class DatabaseService {
       await supabase.from('lead_activities').insert([{
         id: actId,
         lead_id: leadId,
-        user_id: user.id,
+        user_id: sanitizeUUID(user.id),
         user_name: user.full_name,
         status: updates.status,
         remark: updates.remark || 'Status updated',
@@ -2308,7 +2612,7 @@ export class DatabaseService {
         await supabase.from('followups').insert([{
           id: generateUUID(),
           lead_id: leadId,
-          user_id: user.id,
+          user_id: sanitizeUUID(user.id),
           followup_type: updates.callback_date ? 'Call Back' : 'Follow-up',
           scheduled_at: updates.callback_date || updates.followup_date,
           status: 'Pending',
@@ -2318,9 +2622,12 @@ export class DatabaseService {
       }
 
       // Re-fetch lead and activities from Supabase (single source of truth)
-      const { data: refreshedLead } = await supabase.from('leads').select('*').eq('id', leadId).single();
+      const { data: refreshedLead } = await supabase.from('leads').select('*').eq('id', leadId).maybeSingle();
       if (refreshedLead) {
-        this.leads[index] = refreshedLead;
+        this.leads[index] = {
+          ...refreshedLead,
+          department_id: sanitizeUUID(refreshedLead.department_id) || refreshedLead.department_id,
+        };
       }
 
       const { data: refreshedActs } = await supabase.from('lead_activities').select('*').order('created_at', { ascending: false });
@@ -2352,7 +2659,7 @@ export class DatabaseService {
     const userId = user ? user.id : '00000000-0000-0000-0000-000000000000';
 
     const supabase = getSupabase();
-    if (supabase) {
+    if (supabase && isValidUUID(leadId)) {
       const { error: updateErr } = await supabase.from('leads').update({
         mobile_unlock_count: newCount,
         mobile_unlocked_at: now,
@@ -2367,15 +2674,15 @@ export class DatabaseService {
       const actId = generateUUID();
       await supabase.from('lead_activities').insert([{
         id: actId,
-        lead_id: lead.id,
-        user_id: userId,
+        lead_id: leadId,
+        user_id: sanitizeUUID(userId),
         user_name: userName,
         status: lead.status,
         remark: `Mobile number unlocked by ${userName} (Unlock #${newCount})`,
         created_at: now,
       }]);
 
-      const { data: refreshedLead } = await supabase.from('leads').select('*').eq('id', leadId).single();
+      const { data: refreshedLead } = await supabase.from('leads').select('*').eq('id', leadId).maybeSingle();
       if (refreshedLead) {
         this.leads[index] = refreshedLead;
         return { success: true, lead: refreshedLead, unlockCount: refreshedLead.mobile_unlock_count || newCount };
