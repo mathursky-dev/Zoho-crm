@@ -2,14 +2,29 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 // Environment variables or localStorage stored credentials
 const getStoredCredentials = () => {
-  const envUrl = import.meta.env.VITE_SUPABASE_URL;
-  const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  const envUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
+  const envKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
   
-  const localUrl = localStorage.getItem('leadflow_supabase_url');
-  const localKey = localStorage.getItem('leadflow_supabase_key');
+  const localUrl = (localStorage.getItem('leadflow_supabase_url') || '').trim();
+  const localKey = (localStorage.getItem('leadflow_supabase_key') || '').trim();
 
-  const url = (localUrl || envUrl || '').trim();
-  const key = (localKey || envKey || '').trim();
+  let url = localUrl || envUrl;
+  const key = localKey || envKey;
+
+  // Auto-recovery: If url is missing or doesn't start with http/https, but key is a Supabase JWT with project ref
+  if ((!url || (!url.startsWith('http://') && !url.startsWith('https://'))) && key) {
+    try {
+      const parts = key.split('.');
+      if (parts.length === 3) {
+        const payload = JSON.parse(atob(parts[1]));
+        if (payload?.ref) {
+          url = `https://${payload.ref}.supabase.co`;
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
 
   const isValidUrl = url.startsWith('http://') || url.startsWith('https://');
   const isPlaceholder = url.includes('your-project') || key.includes('your-anon-key');
@@ -54,6 +69,7 @@ export const initClient = (): SupabaseClient | null => {
         auth: {
           persistSession: true,
           autoRefreshToken: true,
+          detectSessionInUrl: true,
         },
       });
       return supabaseInstance;
@@ -96,18 +112,21 @@ CREATE TABLE IF NOT EXISTS public.departments (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 3. Profiles (Users) Table linked to Supabase Auth (Users DO NOT belong to Departments)
+-- 3. Profiles (Users) Table linked to Supabase Auth
 CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT NOT NULL,
   full_name TEXT NOT NULL,
+  username TEXT,
   role TEXT NOT NULL CHECK (role IN ('admin', 'telecaller')),
   phone TEXT,
+  mobile TEXT,
   is_active BOOLEAN NOT NULL DEFAULT true,
+  active BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 4. Lead Statuses Master (All 18 Standard Dispositions)
+-- 4. Lead Statuses Master (All Standard Dispositions)
 CREATE TABLE IF NOT EXISTS public.lead_statuses (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name TEXT NOT NULL UNIQUE,
@@ -117,7 +136,7 @@ CREATE TABLE IF NOT EXISTS public.lead_statuses (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 6. Leads Table
+-- 5. Leads Table
 CREATE TABLE IF NOT EXISTS public.leads (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   lead_code TEXT NOT NULL UNIQUE,
@@ -142,10 +161,14 @@ CREATE TABLE IF NOT EXISTS public.leads (
   payment_status TEXT,
   assigned_at TIMESTAMPTZ,
   last_activity_at TIMESTAMPTZ,
+  custom_fields JSONB DEFAULT '{}'::jsonb,
+  mobile_unlock_count INT DEFAULT 0,
+  mobile_unlocked_at TIMESTAMPTZ,
+  mobile_unlocked_by TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 7. Lead Activities (History Audit Trail)
+-- 6. Lead Activities (History Audit Trail)
 CREATE TABLE IF NOT EXISTS public.lead_activities (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   lead_id UUID NOT NULL REFERENCES public.leads(id) ON DELETE CASCADE,
@@ -156,7 +179,7 @@ CREATE TABLE IF NOT EXISTS public.lead_activities (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 8. Lead Assignments Log
+-- 7. Lead Assignments Log
 CREATE TABLE IF NOT EXISTS public.lead_assignments (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   lead_id UUID NOT NULL REFERENCES public.leads(id) ON DELETE CASCADE,
@@ -199,7 +222,7 @@ RETURNS BOOLEAN AS $$
 BEGIN
   RETURN EXISTS (
     SELECT 1 FROM public.profiles
-    WHERE id = auth.uid() AND role = 'admin' AND is_active = true
+    WHERE id = auth.uid() AND role = 'admin' AND (is_active = true OR active = true)
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

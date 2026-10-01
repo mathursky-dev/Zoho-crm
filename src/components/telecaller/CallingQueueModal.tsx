@@ -102,7 +102,7 @@ export const CallingQueueModal: React.FC<Props> = ({
     }
   };
 
-  const handleSave = (goToNext: boolean = false) => {
+  const handleSave = async (goToNext: boolean = false) => {
     if (!remark.trim()) {
       setError('Please add a call note or remark before saving.');
       return;
@@ -117,7 +117,7 @@ export const CallingQueueModal: React.FC<Props> = ({
       return;
     }
 
-    const res = db.updateLead(currentLead.id, {
+    const res = await db.updateLead(currentLead.id, {
       status,
       remark: remark.trim(),
       followup_date: followupDate ? new Date(followupDate).toISOString() : null,

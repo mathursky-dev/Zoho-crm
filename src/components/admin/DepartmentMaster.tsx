@@ -15,9 +15,14 @@ export const DepartmentMaster: React.FC = () => {
   const [isActive, setIsActive] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const refreshList = () => {
+  const refreshList = async () => {
+    await db.syncFromSupabase();
     setDepartments(db.getDepartments(true));
   };
+
+  React.useEffect(() => {
+    refreshList();
+  }, []);
 
   const openAddModal = () => {
     setEditingDept(null);
@@ -39,36 +44,48 @@ export const DepartmentMaster: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !code.trim()) {
       setError('Name and Code are required fields.');
       return;
     }
 
-    if (editingDept) {
-      db.updateDepartment(editingDept.id, {
-        name: name.trim(),
-        code: code.trim().toUpperCase(),
-        description: description.trim(),
-        is_active: isActive,
-      });
-    } else {
-      db.addDepartment({
-        name: name.trim(),
-        code: code.trim().toUpperCase(),
-        description: description.trim(),
-        is_active: isActive,
-      });
-    }
+    try {
+      if (editingDept) {
+        const res = await db.updateDepartment(editingDept.id, {
+          name: name.trim(),
+          code: code.trim().toUpperCase(),
+          description: description.trim(),
+          is_active: isActive,
+        });
+        if (res.error) {
+          setError(res.error);
+          return;
+        }
+      } else {
+        const res = await db.addDepartment({
+          name: name.trim(),
+          code: code.trim().toUpperCase(),
+          description: description.trim(),
+          is_active: isActive,
+        });
+        if (res.error) {
+          setError(res.error);
+          return;
+        }
+      }
 
-    setIsModalOpen(false);
-    refreshList();
+      setIsModalOpen(false);
+      await refreshList();
+    } catch (err: any) {
+      setError(err?.message || 'Failed to save department in database.');
+    }
   };
 
-  const toggleStatus = (dept: Department) => {
+  const toggleStatus = async (dept: Department) => {
     const newActiveState = !dept.is_active;
-    db.updateDepartment(dept.id, { is_active: newActiveState });
+    await db.updateDepartment(dept.id, { is_active: newActiveState });
     setDepartments(prev =>
       prev.map(item => (item.id === dept.id ? { ...item, is_active: newActiveState } : item))
     );

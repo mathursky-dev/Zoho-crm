@@ -37,9 +37,14 @@ export const StatusMaster: React.FC = () => {
     }, 2500);
   };
 
-  const refresh = () => {
+  const refresh = async () => {
+    await db.syncFromSupabase();
     setStatuses(db.getStatuses(true));
   };
+
+  React.useEffect(() => {
+    refresh();
+  }, []);
 
   const openAdd = () => {
     setEditingStatus(null);
@@ -61,54 +66,66 @@ export const StatusMaster: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
       setError('Status Name is required.');
       return;
     }
 
-    if (editingStatus) {
-      db.updateStatus(editingStatus.id, {
-        name: name.trim(),
-        color,
-        display_order: Number(displayOrder),
-        is_active: isActive,
-      });
-    } else {
-      db.addStatus({
-        name: name.trim(),
-        color,
-        display_order: Number(displayOrder),
-        is_active: isActive,
-      });
-    }
+    try {
+      if (editingStatus) {
+        const res = await db.updateStatus(editingStatus.id, {
+          name: name.trim(),
+          color,
+          display_order: Number(displayOrder),
+          is_active: isActive,
+        });
+        if (res.error) {
+          setError(res.error);
+          return;
+        }
+      } else {
+        const res = await db.addStatus({
+          name: name.trim(),
+          color,
+          display_order: Number(displayOrder),
+          is_active: isActive,
+        });
+        if (res.error) {
+          setError(res.error);
+          return;
+        }
+      }
 
-    setIsModalOpen(false);
-    refresh();
-    showToast(editingStatus ? 'Status updated' : 'New status added');
+      setIsModalOpen(false);
+      await refresh();
+      showToast(editingStatus ? 'Status updated' : 'New status added');
+    } catch (err: any) {
+      setError(err?.message || 'Failed to save status.');
+    }
   };
 
   // Toggle active/inactive in 1 single click
-  const toggleStatus = (s: LeadStatus) => {
+  const toggleStatus = async (s: LeadStatus) => {
     const newActiveState = !s.is_active;
-    db.updateStatus(s.id, { is_active: newActiveState });
+    await db.updateStatus(s.id, { is_active: newActiveState });
     setStatuses(prev =>
       prev.map(item => (item.id === s.id ? { ...item, is_active: newActiveState } : item))
     );
   };
 
   // Move status up or down
-  const handleMove = (statusId: string, direction: 'up' | 'down') => {
-    const updated = db.moveStatus(statusId, direction);
+  const handleMove = async (statusId: string, direction: 'up' | 'down') => {
+    const updated = await db.moveStatus(statusId, direction);
     setStatuses(updated);
     showToast(`Status moved ${direction}`);
   };
 
   // Clean re-sequence all statuses to 1..N
-  const handleAutoSequence = () => {
+  const handleAutoSequence = async () => {
     const orderedIds = statuses.map(s => s.id);
-    const updated = db.reorderStatuses(orderedIds);
+    const updated = await db.reorderStatuses(orderedIds);
     setStatuses(updated);
     showToast('Statuses sequenced 1 to ' + updated.length);
   };
@@ -125,7 +142,7 @@ export const StatusMaster: React.FC = () => {
     }
   };
 
-  const handleDrop = (e: React.DragEvent, targetIndex: number) => {
+  const handleDrop = async (e: React.DragEvent, targetIndex: number) => {
     e.preventDefault();
     if (draggedIndex === null || draggedIndex === targetIndex) {
       setDraggedIndex(null);
@@ -137,7 +154,7 @@ export const StatusMaster: React.FC = () => {
     const [movedItem] = newStatuses.splice(draggedIndex, 1);
     newStatuses.splice(targetIndex, 0, movedItem);
 
-    const updated = db.reorderStatuses(newStatuses.map(s => s.id));
+    const updated = await db.reorderStatuses(newStatuses.map(s => s.id));
     setStatuses(updated);
     setDraggedIndex(null);
     setDragOverIndex(null);

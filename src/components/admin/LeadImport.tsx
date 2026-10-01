@@ -125,7 +125,7 @@ export const LeadImport: React.FC<Props> = ({ onNavigate }) => {
     }
   };
 
-  const handleConfirmImport = () => {
+  const handleConfirmImport = async () => {
     if (!mapping.customer_name || !mapping.mobile) {
       alert('Please map both Customer Name and Mobile columns.');
       return;
@@ -137,7 +137,7 @@ export const LeadImport: React.FC<Props> = ({ onNavigate }) => {
     }
 
     setLoading(true);
-    const result = db.importLeads(parsedData, selectedDeptId, mapping);
+    const result = await db.importLeads(parsedData, selectedDeptId, mapping);
     setImportResult(result);
     setLoading(false);
     setStep(3);

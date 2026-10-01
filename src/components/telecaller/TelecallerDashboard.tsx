@@ -27,7 +27,7 @@ export const TelecallerDashboard: React.FC<Props> = ({
   onStartCallingQueue,
 }) => {
   const user = db.getCurrentUser();
-  const metrics = db.getTelecallerMetrics(user.id);
+  const metrics = db.getTelecallerMetrics(user?.id);
   const myLeads = db.getLeads(); // strictly filtered to current user
 
   // KPI card configs (12 clickable cards)
@@ -56,7 +56,7 @@ export const TelecallerDashboard: React.FC<Props> = ({
             <span>Telecaller Calling Station · Active</span>
           </div>
           <h1 className="text-xl sm:text-2xl font-black tracking-tight">
-            Welcome back, {user.full_name}
+            Welcome back, {user?.full_name || 'Agent'}
           </h1>
           <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-xl">
             You have <strong className="text-white font-bold">{metrics.untouched} untouched leads</strong> and{' '}

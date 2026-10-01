@@ -84,7 +84,7 @@ export const LeadUpdateModal: React.FC<Props> = ({
     setError(null);
   }, [lead]);
 
-  const handleSubmit = (triggerNext: boolean = false) => {
+  const handleSubmit = async (triggerNext: boolean = false) => {
     if (!remark.trim()) {
       setError('Please add a remark describing the update or call interaction.');
       return;
@@ -114,7 +114,7 @@ export const LeadUpdateModal: React.FC<Props> = ({
     setIsSubmitting(true);
     setError(null);
 
-    const result = db.updateLead(lead.id, {
+    const result = await db.updateLead(lead.id, {
       status,
       remark: remark.trim(),
       followup_date: followupDate ? new Date(followupDate).toISOString() : null,

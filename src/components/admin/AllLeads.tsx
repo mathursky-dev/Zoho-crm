@@ -144,9 +144,9 @@ export const AllLeads: React.FC<Props> = ({
   const singleAssignedLead = selectedLeads.length === 1 && selectedLeads[0].assigned_to ? selectedLeads[0] : null;
   const targetUserObj = telecallers.find(u => u.id === targetUserId);
 
-  const handleBulkAssign = () => {
+  const handleBulkAssign = async () => {
     if (!targetUserId || selectedIds.length === 0) return;
-    const res = db.assignLeads(selectedIds, targetUserId);
+    const res = await db.assignLeads(selectedIds, targetUserId);
     setAssignMessage(res.message);
     setSelectedIds([]);
     setIsAssignModalOpen(false);

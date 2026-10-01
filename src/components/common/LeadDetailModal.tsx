@@ -14,8 +14,8 @@ export const LeadDetailModal: React.FC<Props> = ({ lead, onClose, onOpenUpdate }
 
   const [currentLead, setCurrentLead] = useState<Lead>(lead);
 
-  const handleUnlock = () => {
-    const res = db.unlockLeadMobile(currentLead.id);
+  const handleUnlock = async () => {
+    const res = await db.unlockLeadMobile(currentLead.id);
     if (res.lead) {
       setCurrentLead(res.lead);
     }

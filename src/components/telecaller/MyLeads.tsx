@@ -39,8 +39,8 @@ export const MyLeads: React.FC<Props> = ({
   const [unlockedMap, setUnlockedMap] = useState<Record<string, boolean>>({});
   const [, setVersion] = useState(0);
 
-  const handleUnlockMobile = (leadId: string) => {
-    db.unlockLeadMobile(leadId);
+  const handleUnlockMobile = async (leadId: string) => {
+    await db.unlockLeadMobile(leadId);
     setUnlockedMap(prev => ({ ...prev, [leadId]: true }));
     setVersion(v => v + 1);
   };

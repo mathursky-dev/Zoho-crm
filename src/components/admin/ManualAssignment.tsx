@@ -68,7 +68,7 @@ export const ManualAssignment: React.FC<Props> = ({ onNavigate }) => {
   const singleAssignedLead = selectedLeads.length === 1 && selectedLeads[0].assigned_to ? selectedLeads[0] : null;
   const targetUserObj = activeTelecallers.find(u => u.id === targetUserId);
 
-  const executeAssignment = () => {
+  const executeAssignment = async () => {
     if (!targetUserId) {
       setFeedback({ type: 'error', message: 'Please select a telecaller to assign the leads to.' });
       return;
@@ -78,8 +78,8 @@ export const ManualAssignment: React.FC<Props> = ({ onNavigate }) => {
       return;
     }
 
-    const res = db.assignLeads(selectedLeadIds, targetUserId);
-    setFeedback({ type: 'success', message: res.message });
+    const res = await db.assignLeads(selectedLeadIds, targetUserId);
+    setFeedback({ type: res.error ? 'error' : 'success', message: res.message });
     setSelectedLeadIds([]);
     setTargetUserId('');
     setShowConfirmModal(false);

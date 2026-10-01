@@ -18,10 +18,16 @@ export const UserMaster: React.FC = () => {
   const [phone, setPhone] = useState('');
   const [isActive, setIsActive] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  const refreshList = () => {
+  const refreshList = async () => {
+    await db.syncFromSupabase();
     setUsers(db.getUsers(true) as any);
   };
+
+  React.useEffect(() => {
+    refreshList();
+  }, []);
 
   const openAddModal = () => {
     setEditingUser(null);
@@ -49,7 +55,7 @@ export const UserMaster: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fullName.trim() || !email.trim()) {
       setError('Full Name and Email are required.');
@@ -63,38 +69,60 @@ export const UserMaster: React.FC = () => {
 
     const cleanUsername = username.trim() || email.trim().split('@')[0].toLowerCase();
 
-    if (editingUser) {
-      db.updateUser(editingUser.id, {
-        full_name: fullName.trim(),
-        username: cleanUsername,
-        email: email.trim(),
-        role,
-        phone: phone.trim(),
-        password: password.trim() ? password.trim() : editingUser.password,
-        is_active: isActive,
-      });
-    } else {
-      db.addUser({
-        full_name: fullName.trim(),
-        username: cleanUsername,
-        email: email.trim(),
-        role,
-        phone: phone.trim(),
-        password: password.trim(),
-        is_active: isActive,
-      });
-    }
+    setSaving(true);
+    setError(null);
 
-    setIsModalOpen(false);
-    refreshList();
+    try {
+      if (editingUser) {
+        const res = await db.updateUser(editingUser.id, {
+          full_name: fullName.trim(),
+          username: cleanUsername,
+          role,
+          phone: phone.trim(),
+          password: password.trim() ? password.trim() : undefined,
+          is_active: isActive,
+        });
+
+        if (res.error) {
+          setError(res.error);
+          setSaving(false);
+          return;
+        }
+      } else {
+        const res = await db.addUser({
+          full_name: fullName.trim(),
+          username: cleanUsername,
+          email: email.trim(),
+          role,
+          phone: phone.trim(),
+          password: password.trim(),
+          is_active: isActive,
+        });
+
+        if (res.error) {
+          setError(res.error);
+          setSaving(false);
+          return;
+        }
+      }
+
+      setIsModalOpen(false);
+      await refreshList();
+    } catch (err: any) {
+      setError(err?.message || 'Failed to save user in database.');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const toggleStatus = (u: Profile) => {
+  const toggleStatus = async (u: Profile) => {
     const newActiveState = !u.is_active;
-    db.updateUser(u.id, { is_active: newActiveState });
-    setUsers(prev =>
-      prev.map(item => (item.id === u.id ? { ...item, is_active: newActiveState } : item))
-    );
+    const res = await db.updateUser(u.id, { is_active: newActiveState });
+    if (!res.error) {
+      setUsers(prev =>
+        prev.map(item => (item.id === u.id ? { ...item, is_active: newActiveState } : item))
+      );
+    }
   };
 
   return (

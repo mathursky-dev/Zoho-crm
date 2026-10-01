@@ -71,7 +71,8 @@ export const TelecallerReports: React.FC = () => {
       Count: item.count,
     }));
 
-    db.exportData(exportData, `Telecaller_Performance_${user.full_name.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}`, format);
+    const userName = user?.full_name ? user.full_name.replace(/\s+/g, '_') : 'Telecaller';
+    db.exportData(exportData, `Telecaller_Performance_${userName}_${new Date().toISOString().slice(0, 10)}`, format);
   };
 
   return (
