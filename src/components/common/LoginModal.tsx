@@ -175,48 +175,10 @@ export const LoginModal: React.FC<Props> = ({
             </button>
           </form>
 
-          {/* Quick Demo Credentials */}
-          <div className="mt-4 pt-3.5 border-t border-slate-200">
-            <div className="text-[11px] font-bold text-slate-700 mb-2 flex items-center justify-between">
-              <span>Quick Login (Click to Fill):</span>
-              <span className="text-[10px] text-blue-600 font-normal">Tap to auto-fill</span>
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <button
-                type="button"
-                onClick={() => {
-                  setIdentifier('admin');
-                  setPassword('admin123');
-                  setError(null);
-                }}
-                className="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-blue-50 hover:border-blue-300 text-left transition-colors cursor-pointer"
-              >
-                <div className="font-bold text-slate-800 text-[11px] flex items-center justify-between">
-                  <span>Admin</span>
-                  <span className="text-[9px] px-1 py-0.5 rounded bg-blue-100 text-blue-700 font-semibold">Full CRM</span>
-                </div>
-                <div className="text-[10px] text-slate-500 font-mono mt-0.5">admin / admin123</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setIdentifier('alex');
-                  setPassword('alex123');
-                  setError(null);
-                }}
-                className="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-emerald-50 hover:border-emerald-300 text-left transition-colors cursor-pointer"
-              >
-                <div className="font-bold text-slate-800 text-[11px] flex items-center justify-between">
-                  <span>Telecaller</span>
-                  <span className="text-[9px] px-1 py-0.5 rounded bg-emerald-100 text-emerald-700 font-semibold">Calling</span>
-                </div>
-                <div className="text-[10px] text-slate-500 font-mono mt-0.5">alex / alex123</div>
-              </button>
-            </div>
-            <div className="mt-2 text-[10px] text-slate-400 text-center">
-              Also supports <span className="font-mono text-slate-600">superadmin/superadmin123</span> & <span className="font-mono text-slate-600">priya/priya123</span>
-            </div>
+          <div className="mt-4 pt-3 border-t border-slate-100 text-center">
+            <span className="text-[11px] text-slate-400">
+              Authorized personnel only. Password verification enforced.
+            </span>
           </div>
         </div>
       </div>
