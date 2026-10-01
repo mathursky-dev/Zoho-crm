@@ -317,7 +317,9 @@ VALUES
   ('d1000000-0000-4000-8000-000000000001', 'Home Loans', 'HL', 'Mortgages and home refinance'),
   ('d1000000-0000-4000-8000-000000000002', 'Health Insurance', 'INS', 'Comprehensive medical & term policies'),
   ('d1000000-0000-4000-8000-000000000003', 'Credit Cards', 'CC', 'Premium & cashback credit solutions'),
-  ('d1000000-0000-4000-8000-000000000004', 'Personal Loans', 'PL', 'Instant unsecured personal credit')
+  ('d1000000-0000-4000-8000-000000000004', 'Personal Loans', 'PL', 'Instant unsecured personal credit'),
+  ('d1000000-0000-4000-8000-000000000005', 'Astro oc', 'Astro', 'Astrology consultation and occult services'),
+  ('d1000000-0000-4000-8000-000000000006', 'Ayur oc', 'Ayur', 'Ayurveda healthcare and herbal remedies')
 ON CONFLICT (code) DO NOTHING;
 
 -- ========================================================

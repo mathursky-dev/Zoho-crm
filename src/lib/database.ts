@@ -45,12 +45,16 @@ export const DEPT_HOME_LOANS_UUID      = 'd1000000-0000-4000-8000-000000000001';
 export const DEPT_HEALTH_INS_UUID     = 'd1000000-0000-4000-8000-000000000002';
 export const DEPT_CREDIT_CARDS_UUID   = 'd1000000-0000-4000-8000-000000000003';
 export const DEPT_PERSONAL_LOANS_UUID = 'd1000000-0000-4000-8000-000000000004';
+export const DEPT_ASTRO_OC_UUID       = 'd1000000-0000-4000-8000-000000000005';
+export const DEPT_AYUR_OC_UUID        = 'd1000000-0000-4000-8000-000000000006';
 
 export const DEFAULT_DEPARTMENTS: Department[] = [
   { id: DEPT_HOME_LOANS_UUID, name: 'Home Loans', code: 'HL', description: 'Mortgages and home refinance', is_active: true, created_at: new Date(Date.now() - 30 * 86400000).toISOString() },
   { id: DEPT_HEALTH_INS_UUID, name: 'Health Insurance', code: 'INS', description: 'Comprehensive medical & term policies', is_active: true, created_at: new Date(Date.now() - 30 * 86400000).toISOString() },
   { id: DEPT_CREDIT_CARDS_UUID, name: 'Credit Cards', code: 'CC', description: 'Premium & cashback credit solutions', is_active: true, created_at: new Date(Date.now() - 30 * 86400000).toISOString() },
   { id: DEPT_PERSONAL_LOANS_UUID, name: 'Personal Loans', code: 'PL', description: 'Instant unsecured personal credit', is_active: true, created_at: new Date(Date.now() - 30 * 86400000).toISOString() },
+  { id: DEPT_ASTRO_OC_UUID, name: 'Astro oc', code: 'Astro', description: 'Astrology consultation and occult services', is_active: true, created_at: new Date(Date.now() - 10 * 86400000).toISOString() },
+  { id: DEPT_AYUR_OC_UUID, name: 'Ayur oc', code: 'Ayur', description: 'Ayurveda healthcare and herbal remedies', is_active: true, created_at: new Date(Date.now() - 10 * 86400000).toISOString() },
 ];
 
 export const LEGACY_DEPT_MAP: Record<string, string> = {
@@ -58,6 +62,8 @@ export const LEGACY_DEPT_MAP: Record<string, string> = {
   'dept-2': DEPT_HEALTH_INS_UUID,
   'dept-3': DEPT_CREDIT_CARDS_UUID,
   'dept-4': DEPT_PERSONAL_LOANS_UUID,
+  'dept-5': DEPT_ASTRO_OC_UUID,
+  'dept-6': DEPT_AYUR_OC_UUID,
 };
 
 export const SUPERADMIN_UUID = 'a1000000-0000-4000-8000-000000000000';
@@ -647,10 +653,21 @@ export class DatabaseService {
         .select('*')
         .order('created_at', { ascending: true });
       if (!deptsErr && depts && depts.length > 0) {
-        this.departments = depts.map(d => ({
+        const remoteCodes = new Set(depts.map(d => (d.code || '').toUpperCase()));
+        const remoteNames = new Set(depts.map(d => (d.name || '').toLowerCase()));
+        const merged: Department[] = depts.map(d => ({
           ...d,
           id: LEGACY_DEPT_MAP[d.id] || (isValidUUID(d.id) ? d.id : generateUUID()),
         }));
+
+        // Include default standard departments (like Astro oc, Ayur oc) so they are always present
+        DEFAULT_DEPARTMENTS.forEach(def => {
+          if (!remoteCodes.has(def.code.toUpperCase()) && !remoteNames.has(def.name.toLowerCase())) {
+            merged.push(def);
+          }
+        });
+
+        this.departments = merged;
       } else if (!deptsErr && (!depts || depts.length === 0)) {
         await this.ensureDepartmentsInSupabase();
       }
