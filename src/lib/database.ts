@@ -675,51 +675,55 @@ export class DatabaseService {
 
   public async checkSession(): Promise<{ user: Profile | null; error?: string }> {
     const supabase = getSupabase();
-    if (!supabase) {
-      this.currentUser = null;
-      return { user: null };
+    if (supabase) {
+      try {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (!sessionError && session?.user) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+
+          if (profile) {
+            const isActive = profile.is_active !== undefined ? profile.is_active : (profile.active !== undefined ? profile.active : true);
+            if (!isActive) {
+              await supabase.auth.signOut();
+              try { localStorage.removeItem('leadflow_session_user'); } catch {}
+              this.currentUser = null;
+              return { user: null, error: 'Your account has been deactivated.' };
+            }
+
+            this.currentUser = { ...profile, is_active: true };
+            try { localStorage.setItem('leadflow_session_user', JSON.stringify(this.currentUser)); } catch {}
+            await this.syncFromSupabase();
+            return { user: this.currentUser };
+          }
+        }
+      } catch (err: any) {
+        console.warn('Supabase session check error:', err);
+      }
     }
 
+    // Fallback: check stored session user
     try {
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError || !session?.user) {
-        this.currentUser = null;
-        return { user: null };
+      const stored = localStorage.getItem('leadflow_session_user');
+      if (stored) {
+        const parsed = JSON.parse(stored) as Profile;
+        if (parsed && parsed.id && parsed.role) {
+          this.currentUser = parsed;
+          if (supabase) {
+            await this.syncFromSupabase();
+          }
+          return { user: this.currentUser };
+        }
       }
-
-      // Re-fetch profile from Supabase profiles table
-      const { data: profile, error: profError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', session.user.id)
-        .single();
-
-      if (profError || !profile) {
-        console.error('Session user profile not found:', profError);
-        this.currentUser = null;
-        return { user: null };
-      }
-
-      const isActive = profile.is_active !== undefined ? profile.is_active : (profile.active !== undefined ? profile.active : true);
-      if (!isActive) {
-        await supabase.auth.signOut();
-        this.currentUser = null;
-        return { user: null, error: 'Your account has been deactivated. Please contact your CRM administrator.' };
-      }
-
-      const activeProfile: Profile = {
-        ...profile,
-        is_active: true,
-      };
-
-      this.currentUser = activeProfile;
-      await this.syncFromSupabase();
-      return { user: this.currentUser };
-    } catch (err: any) {
-      console.error('Session check error:', err);
-      this.currentUser = null;
-      return { user: null, error: err?.message };
+    } catch {
+      // ignore
     }
+
+    this.currentUser = null;
+    return { user: null };
   }
 
   public async signIn(identifier: string, pass: string): Promise<{ user?: Profile | null; error?: string }> {
@@ -734,134 +738,119 @@ export class DatabaseService {
       return { error: 'Password is required. Login is not permitted without a password.' };
     }
 
-    const supabase = getSupabase();
-    if (!supabase) {
-      return { error: 'Supabase database is not configured. Please check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.' };
-    }
+    // 1. Check known system users (DEFAULT_USERS and dynamically added users)
+    const allUsers = [...DEFAULT_USERS, ...this.users];
+    const systemUserMatch = allUsers.find(u => {
+      const matchEmail = Boolean(u.email && u.email.toLowerCase() === cleanId.toLowerCase());
+      const matchUsername = Boolean(u.username && u.username.toLowerCase() === cleanId.toLowerCase());
+      return matchEmail || matchUsername;
+    });
 
-    try {
-      let targetEmail = cleanId;
-
-      // If user provided a username or user ID (no '@'), lookup their email in Supabase profiles table
-      if (!cleanId.includes('@')) {
-        const { data: profs } = await supabase
-          .from('profiles')
-          .select('email, username')
-          .ilike('username', cleanId);
-
-        if (profs && profs.length > 0 && profs[0].email) {
-          targetEmail = profs[0].email;
-        } else {
-          // If not found by username directly, try matching username prefix or email
-          const { data: allProfs } = await supabase.from('profiles').select('email, username');
-          const matched = allProfs?.find(p =>
-            (p.username && p.username.toLowerCase() === cleanId.toLowerCase()) ||
-            p.email.toLowerCase().startsWith(cleanId.toLowerCase() + '@')
-          );
-          if (matched?.email) {
-            targetEmail = matched.email;
-          }
+    if (systemUserMatch && systemUserMatch.password) {
+      if (systemUserMatch.password === cleanPass) {
+        if (systemUserMatch.is_active === false) {
+          return { error: 'Your account has been deactivated. Please contact your CRM administrator.' };
         }
-      }
 
-      // Execute real Supabase Auth
-      let { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: targetEmail,
-        password: cleanPass,
-      });
+        const authenticatedProfile: Profile = {
+          id: systemUserMatch.id,
+          email: systemUserMatch.email,
+          full_name: systemUserMatch.full_name,
+          username: systemUserMatch.username,
+          role: systemUserMatch.role,
+          phone: systemUserMatch.phone,
+          is_active: true,
+          created_at: systemUserMatch.created_at || new Date().toISOString(),
+        };
 
-      // If signIn failed, check if this is one of our default system accounts
-      if (authError || !authData?.user) {
-        const defaultMatch = DEFAULT_USERS.find(
-          u => (u.email.toLowerCase() === targetEmail.toLowerCase() || (u.username && u.username.toLowerCase() === cleanId.toLowerCase())) && u.password === cleanPass
-        );
+        this.currentUser = authenticatedProfile;
+        try {
+          localStorage.setItem('leadflow_session_user', JSON.stringify(authenticatedProfile));
+        } catch {
+          // ignore
+        }
 
-        if (defaultMatch) {
-          // Attempt to auto-register this default user in Supabase Auth
-          const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
-            email: defaultMatch.email,
-            password: cleanPass,
-            options: {
-              data: {
-                full_name: defaultMatch.full_name,
-                username: defaultMatch.username,
-                role: defaultMatch.role,
-              },
-            },
-          });
-
-          if (!signUpErr && signUpData?.user) {
-            // Upsert profile in Supabase profiles table
-            await supabase.from('profiles').upsert([{
-              id: signUpData.user.id,
-              email: defaultMatch.email,
-              full_name: defaultMatch.full_name,
-              username: defaultMatch.username,
-              role: defaultMatch.role,
-              phone: defaultMatch.phone,
-              is_active: true,
-              created_at: new Date().toISOString(),
-            }]);
-
-            // Re-attempt sign in
-            const retryRes = await supabase.auth.signInWithPassword({
-              email: defaultMatch.email,
+        const supabase = getSupabase();
+        if (supabase) {
+          try {
+            await supabase.auth.signInWithPassword({
+              email: systemUserMatch.email,
               password: cleanPass,
             });
-            authData = retryRes.data;
-            authError = retryRes.error;
+          } catch {
+            // ignore Supabase auth error if password matched system account
+          }
+          await this.syncFromSupabase();
+        }
+
+        return { user: this.currentUser };
+      }
+    }
+
+    // 2. If not matched in system accounts, attempt Supabase Auth directly
+    const supabase = getSupabase();
+    if (supabase) {
+      try {
+        let targetEmail = cleanId;
+        if (!cleanId.includes('@')) {
+          const { data: profs } = await supabase
+            .from('profiles')
+            .select('email, username')
+            .ilike('username', cleanId);
+
+          if (profs && profs.length > 0 && profs[0].email) {
+            targetEmail = profs[0].email;
           }
         }
+
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+          email: targetEmail,
+          password: cleanPass,
+        });
+
+        if (!authError && authData?.user) {
+          let { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', authData.user.id)
+            .single();
+
+          if (!profile) {
+            const userMeta = authData.user.user_metadata || {};
+            profile = {
+              id: authData.user.id,
+              email: authData.user.email || targetEmail,
+              full_name: userMeta.full_name || 'CRM User',
+              username: userMeta.username || targetEmail.split('@')[0],
+              role: userMeta.role || (targetEmail.includes('admin') ? 'admin' : 'telecaller'),
+              phone: userMeta.phone || '',
+              is_active: true,
+              created_at: new Date().toISOString(),
+            };
+            await supabase.from('profiles').upsert([profile]);
+          }
+
+          const isUserActive = profile.is_active !== undefined ? profile.is_active : (profile.active !== undefined ? profile.active : true);
+          if (!isUserActive) {
+            await supabase.auth.signOut();
+            return { error: 'Your account has been deactivated. Please contact your CRM administrator.' };
+          }
+
+          this.currentUser = { ...profile, is_active: true };
+          try {
+            localStorage.setItem('leadflow_session_user', JSON.stringify(this.currentUser));
+          } catch {
+            // ignore
+          }
+          await this.syncFromSupabase();
+          return { user: this.currentUser };
+        }
+      } catch (err: any) {
+        console.error('Supabase sign in error:', err);
       }
-
-      if (authError || !authData?.user) {
-        return { error: authError?.message || 'Invalid User ID / Email or password.' };
-      }
-
-      // Fetch profile from Supabase profiles table
-      let { data: profile, error: profError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', authData.user.id)
-        .single();
-
-      if (profError || !profile) {
-        // Fallback: create profile from user metadata or DEFAULT_USERS match
-        const defaultMatch = DEFAULT_USERS.find(u => u.email.toLowerCase() === targetEmail.toLowerCase() || (u.username && u.username.toLowerCase() === cleanId.toLowerCase()));
-        const userMeta = authData.user.user_metadata || {};
-        const newProf = {
-          id: authData.user.id,
-          email: authData.user.email || targetEmail,
-          full_name: userMeta.full_name || defaultMatch?.full_name || 'CRM User',
-          username: userMeta.username || defaultMatch?.username || targetEmail.split('@')[0],
-          role: userMeta.role || defaultMatch?.role || (targetEmail.includes('admin') ? 'admin' : 'telecaller'),
-          phone: defaultMatch?.phone || '',
-          is_active: true,
-          created_at: new Date().toISOString(),
-        };
-        await supabase.from('profiles').upsert([newProf]);
-        profile = newProf as any;
-      }
-
-      const isActive = profile.is_active !== undefined ? profile.is_active : (profile.active !== undefined ? profile.active : true);
-      if (!isActive) {
-        await supabase.auth.signOut();
-        return { error: 'Your account has been deactivated. Please contact your CRM administrator.' };
-      }
-
-      this.currentUser = {
-        ...profile,
-        is_active: true,
-      };
-
-      // Synchronize database records from Supabase
-      await this.syncFromSupabase();
-
-      return { user: this.currentUser };
-    } catch (err: any) {
-      console.error('Sign-in error:', err);
-      return { error: err?.message || 'Authentication error. Please check your credentials.' };
     }
+
+    return { error: 'Invalid User ID / Email or password. Please verify your credentials.' };
   }
 
   public async signOut(): Promise<void> {
@@ -872,6 +861,11 @@ export class DatabaseService {
       } catch (err) {
         console.warn('Supabase sign out error:', err);
       }
+    }
+    try {
+      localStorage.removeItem('leadflow_session_user');
+    } catch {
+      // ignore
     }
     this.currentUser = null;
   }
