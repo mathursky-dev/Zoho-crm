@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Profile, UserRole } from '../../types/crm';
 import { db } from '../../lib/database';
-import { UserCog, Plus, Edit2, Shield, User, Key, Power, X, Phone, Mail } from 'lucide-react';
+import { UserCog, Plus, Edit2, Shield, User, Key, Power, X, Phone, Mail, Database, RefreshCw, CheckCircle, Headphones } from 'lucide-react';
 
 export const UserMaster: React.FC = () => {
   const [users, setUsers] = useState<(Profile & { password?: string })[]>(db.getUsers(true) as any);
@@ -19,6 +19,8 @@ export const UserMaster: React.FC = () => {
   const [isActive, setIsActive] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [syncingSupabase, setSyncingSupabase] = useState(false);
+  const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
 
   const refreshList = async () => {
     await db.syncFromSupabase();
@@ -28,6 +30,20 @@ export const UserMaster: React.FC = () => {
   React.useEffect(() => {
     refreshList();
   }, []);
+
+  const handleSyncToSupabase = async () => {
+    setSyncingSupabase(true);
+    setSyncFeedback(null);
+    try {
+      const res = await db.syncDefaultUsersToSupabase();
+      setSyncFeedback(res.message);
+      await refreshList();
+    } catch (err: any) {
+      setSyncFeedback(err?.message || 'Failed to sync users to Supabase');
+    } finally {
+      setSyncingSupabase(false);
+    }
+  };
 
   const openAddModal = () => {
     setEditingUser(null);
@@ -131,16 +147,115 @@ export const UserMaster: React.FC = () => {
         <div>
           <h1 className="text-xl font-bold text-slate-900">User Master & Authentication</h1>
           <p className="text-xs text-slate-500">
-            Manage system administrators and telecaller staff with logins and passwords. (Users are independent of departments; departments belong only to leads).
+            Manage system administrators and telecaller staff with logins and passwords. Same users are supported on Vercel and Supabase.
           </p>
         </div>
-        <button
-          onClick={openAddModal}
-          className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-xs transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Add User</span>
-        </button>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={handleSyncToSupabase}
+            disabled={syncingSupabase}
+            className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold rounded-lg shadow-xs transition-colors"
+            title="Push & synchronize all pre-configured administrator and telecaller accounts to Supabase"
+          >
+            {syncingSupabase ? (
+              <RefreshCw className="w-4 h-4 animate-spin" />
+            ) : (
+              <Database className="w-4 h-4" />
+            )}
+            <span>{syncingSupabase ? 'Syncing to Supabase...' : 'Sync Accounts to Supabase'}</span>
+          </button>
+          <button
+            onClick={openAddModal}
+            className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-xs transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add User</span>
+          </button>
+        </div>
+      </div>
+
+      {syncFeedback && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-center space-x-2">
+          <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>{syncFeedback}</span>
+        </div>
+      )}
+
+      {/* Pre-configured System Accounts Overview */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Administrator Accounts Box */}
+        <div className="bg-gradient-to-br from-blue-50/70 to-indigo-50/40 border border-blue-200/80 rounded-xl p-4 shadow-2xs">
+          <div className="flex items-center space-x-2 mb-2.5">
+            <div className="p-1.5 bg-blue-600 text-white rounded-lg">
+              <Shield className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                🛡️ Administrator Accounts (Full CRM Access)
+              </h3>
+              <p className="text-[11px] text-slate-500">
+                Full system control, User Master, Department Master, Status Master, Global Lead Pool, Bulk Assignment
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
+            <div className="bg-white/90 p-2.5 rounded-lg border border-blue-100 text-[11px] space-y-1">
+              <div className="font-bold text-slate-900 flex items-center justify-between">
+                <span>Super Administrator</span>
+                <span className="text-[10px] bg-blue-100 text-blue-800 px-1.5 py-0.2 rounded font-mono font-bold">admin</span>
+              </div>
+              <div className="text-slate-600 font-mono">User ID: <span className="font-bold text-blue-700">superadmin</span></div>
+              <div className="text-slate-500 text-[10px]">superadmin@leadflow.com</div>
+              <div className="text-slate-600 font-mono">Password: <span className="font-bold text-slate-800 bg-slate-100 px-1 rounded">superadmin123</span></div>
+            </div>
+            <div className="bg-white/90 p-2.5 rounded-lg border border-blue-100 text-[11px] space-y-1">
+              <div className="font-bold text-slate-900 flex items-center justify-between">
+                <span>Administrator</span>
+                <span className="text-[10px] bg-blue-100 text-blue-800 px-1.5 py-0.2 rounded font-mono font-bold">admin</span>
+              </div>
+              <div className="text-slate-600 font-mono">User ID: <span className="font-bold text-blue-700">admin</span></div>
+              <div className="text-slate-500 text-[10px]">admin@leadflow.com</div>
+              <div className="text-slate-600 font-mono">Password: <span className="font-bold text-slate-800 bg-slate-100 px-1 rounded">admin123</span></div>
+            </div>
+          </div>
+        </div>
+
+        {/* Telecaller Accounts Box */}
+        <div className="bg-gradient-to-br from-emerald-50/70 to-teal-50/40 border border-emerald-200/80 rounded-xl p-4 shadow-2xs">
+          <div className="flex items-center space-x-2 mb-2.5">
+            <div className="p-1.5 bg-emerald-600 text-white rounded-lg">
+              <Headphones className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                🎧 Telecaller Accounts (Calling Station Access)
+              </h3>
+              <p className="text-[11px] text-slate-500">
+                Access to assigned leads, calling queue, follow-up scheduling, phone unlock with strict isolation
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3">
+            <div className="bg-white/90 p-2 rounded-lg border border-emerald-100 text-[11px] space-y-1">
+              <div className="font-bold text-slate-900">Manoj</div>
+              <div className="text-slate-600 font-mono">User ID: <span className="font-bold text-emerald-700">manoj</span></div>
+              <div className="text-slate-500 text-[10px] truncate">manoj@leadflow.com</div>
+              <div className="text-slate-600 font-mono">Pass: <span className="font-bold text-slate-800 bg-slate-100 px-1 rounded">manoj123</span></div>
+            </div>
+            <div className="bg-white/90 p-2 rounded-lg border border-emerald-100 text-[11px] space-y-1">
+              <div className="font-bold text-slate-900">Suraj</div>
+              <div className="text-slate-600 font-mono">User ID: <span className="font-bold text-emerald-700">suraj</span></div>
+              <div className="text-slate-500 text-[10px] truncate">suraj@leadflow.com</div>
+              <div className="text-slate-600 font-mono">Pass: <span className="font-bold text-slate-800 bg-slate-100 px-1 rounded">suraj123</span></div>
+            </div>
+            <div className="bg-white/90 p-2 rounded-lg border border-emerald-100 text-[11px] space-y-1">
+              <div className="font-bold text-slate-900">Jeetu</div>
+              <div className="text-slate-600 font-mono">User ID: <span className="font-bold text-emerald-700">jeetu</span></div>
+              <div className="text-slate-500 text-[10px] truncate">jeetu@leadflow.com</div>
+              <div className="text-slate-600 font-mono">Pass: <span className="font-bold text-slate-800 bg-slate-100 px-1 rounded">jeetu123</span></div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Users Table */}

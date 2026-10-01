@@ -99,8 +99,9 @@ export const SUPABASE_SQL_SCHEMA = `-- =========================================
 -- Run this in your Supabase SQL Editor (SQL Editor -> New Query)
 -- ========================================================
 
--- 1. Enable UUID Extension
+-- 1. Enable UUID Extension & pgcrypto for password hashing
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- 2. Departments Table
 CREATE TABLE IF NOT EXISTS public.departments (
@@ -306,4 +307,142 @@ VALUES
   ('Do Not Call', '#991b1b', 17),
   ('Converted/Completed', '#059669', 18)
 ON CONFLICT (name) DO NOTHING;
+
+-- Seed Standard Departments
+INSERT INTO public.departments (name, code, description)
+VALUES
+  ('Home Loans', 'HL', 'Mortgages and home refinance'),
+  ('Health Insurance', 'INS', 'Comprehensive medical & term policies'),
+  ('Credit Cards', 'CC', 'Premium & cashback credit solutions'),
+  ('Personal Loans', 'PL', 'Instant unsecured personal credit')
+ON CONFLICT (code) DO NOTHING;
+
+-- ========================================================
+-- Seed Pre-configured User Accounts (Auth & Profiles)
+-- ========================================================
+DO $$
+DECLARE
+  superadmin_id UUID := 'a1000000-0000-4000-8000-000000000000';
+  admin_id      UUID := 'a1000000-0000-4000-8000-000000000001';
+  manoj_id      UUID := 'a1000000-0000-4000-8000-000000000002';
+  suraj_id      UUID := 'a1000000-0000-4000-8000-000000000003';
+  jeetu_id      UUID := 'a1000000-0000-4000-8000-000000000004';
+BEGIN
+  -- 1. Super Administrator (superadmin@leadflow.com / superadmin123)
+  IF NOT EXISTS (SELECT 1 FROM auth.users WHERE email = 'superadmin@leadflow.com') THEN
+    INSERT INTO auth.users (
+      instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+      raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+    ) VALUES (
+      '00000000-0000-0000-0000-000000000000',
+      superadmin_id,
+      'authenticated',
+      'authenticated',
+      'superadmin@leadflow.com',
+      crypt('superadmin123', gen_salt('bf')),
+      NOW(),
+      '{"provider":"email","providers":["email"]}'::jsonb,
+      '{"full_name":"Super Administrator","username":"superadmin","role":"admin"}'::jsonb,
+      NOW(),
+      NOW()
+    );
+  END IF;
+
+  -- 2. Administrator (admin@leadflow.com / admin123)
+  IF NOT EXISTS (SELECT 1 FROM auth.users WHERE email = 'admin@leadflow.com') THEN
+    INSERT INTO auth.users (
+      instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+      raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+    ) VALUES (
+      '00000000-0000-0000-0000-000000000000',
+      admin_id,
+      'authenticated',
+      'authenticated',
+      'admin@leadflow.com',
+      crypt('admin123', gen_salt('bf')),
+      NOW(),
+      '{"provider":"email","providers":["email"]}'::jsonb,
+      '{"full_name":"Administrator","username":"admin","role":"admin"}'::jsonb,
+      NOW(),
+      NOW()
+    );
+  END IF;
+
+  -- 3. Manoj (manoj@leadflow.com / manoj123)
+  IF NOT EXISTS (SELECT 1 FROM auth.users WHERE email = 'manoj@leadflow.com') THEN
+    INSERT INTO auth.users (
+      instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+      raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+    ) VALUES (
+      '00000000-0000-0000-0000-000000000000',
+      manoj_id,
+      'authenticated',
+      'authenticated',
+      'manoj@leadflow.com',
+      crypt('manoj123', gen_salt('bf')),
+      NOW(),
+      '{"provider":"email","providers":["email"]}'::jsonb,
+      '{"full_name":"Manoj","username":"manoj","role":"telecaller"}'::jsonb,
+      NOW(),
+      NOW()
+    );
+  END IF;
+
+  -- 4. Suraj (suraj@leadflow.com / suraj123)
+  IF NOT EXISTS (SELECT 1 FROM auth.users WHERE email = 'suraj@leadflow.com') THEN
+    INSERT INTO auth.users (
+      instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+      raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+    ) VALUES (
+      '00000000-0000-0000-0000-000000000000',
+      suraj_id,
+      'authenticated',
+      'authenticated',
+      'suraj@leadflow.com',
+      crypt('suraj123', gen_salt('bf')),
+      NOW(),
+      '{"provider":"email","providers":["email"]}'::jsonb,
+      '{"full_name":"Suraj","username":"suraj","role":"telecaller"}'::jsonb,
+      NOW(),
+      NOW()
+    );
+  END IF;
+
+  -- 5. Jeetu (jeetu@leadflow.com / jeetu123)
+  IF NOT EXISTS (SELECT 1 FROM auth.users WHERE email = 'jeetu@leadflow.com') THEN
+    INSERT INTO auth.users (
+      instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+      raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+    ) VALUES (
+      '00000000-0000-0000-0000-000000000000',
+      jeetu_id,
+      'authenticated',
+      'authenticated',
+      'jeetu@leadflow.com',
+      crypt('jeetu123', gen_salt('bf')),
+      NOW(),
+      '{"provider":"email","providers":["email"]}'::jsonb,
+      '{"full_name":"Jeetu","username":"jeetu","role":"telecaller"}'::jsonb,
+      NOW(),
+      NOW()
+    );
+  END IF;
+
+  -- Profiles Upsert
+  INSERT INTO public.profiles (id, email, full_name, username, role, phone, is_active, active)
+  VALUES
+    (superadmin_id, 'superadmin@leadflow.com', 'Super Administrator', 'superadmin', 'admin', '+91 9876543200', true, true),
+    (admin_id,      'admin@leadflow.com',      'Administrator',       'admin',      'admin', '+91 9876543201', true, true),
+    (manoj_id,      'manoj@leadflow.com',      'Manoj',               'manoj',      'telecaller', '+91 9876543202', true, true),
+    (suraj_id,      'suraj@leadflow.com',      'Suraj',               'suraj',      'telecaller', '+91 9876543203', true, true),
+    (jeetu_id,      'jeetu@leadflow.com',      'Jeetu',               'jeetu',      'telecaller', '+91 9876543204', true, true)
+  ON CONFLICT (id) DO UPDATE SET
+    email = EXCLUDED.email,
+    full_name = EXCLUDED.full_name,
+    username = EXCLUDED.username,
+    role = EXCLUDED.role,
+    phone = EXCLUDED.phone,
+    is_active = EXCLUDED.is_active,
+    active = EXCLUDED.active;
+END $$;
 `;

@@ -222,7 +222,7 @@ export const SupabaseModal: React.FC<Props> = ({ isOpen, onClose, onConfigChange
                 <div>
                   <h3 className="text-xs font-bold uppercase text-slate-700">Ready-To-Run SQL Migration</h3>
                   <p className="text-xs text-slate-500">
-                    Includes tables: profiles, departments, user_departments, lead_statuses, leads, activities, assignments, followups + RLS.
+                    Includes tables: profiles, departments, lead_statuses, leads, activities, assignments, followups, RLS, and 5 pre-configured accounts (superadmin, admin, manoj, suraj, jeetu).
                   </p>
                 </div>
                 <button

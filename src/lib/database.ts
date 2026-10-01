@@ -49,10 +49,10 @@ const DEFAULT_DEPARTMENTS: Department[] = [
 ];
 
 export const SUPERADMIN_UUID = 'a1000000-0000-4000-8000-000000000000';
-export const ADMIN_UUID = 'a1000000-0000-4000-8000-000000000001';
-export const ALEX_UUID  = 'a1000000-0000-4000-8000-000000000002';
-export const PRIYA_UUID = 'a1000000-0000-4000-8000-000000000003';
-export const MARCUS_UUID = 'a1000000-0000-4000-8000-000000000004';
+export const ADMIN_UUID      = 'a1000000-0000-4000-8000-000000000001';
+export const MANOJ_UUID      = 'a1000000-0000-4000-8000-000000000002';
+export const SURAJ_UUID      = 'a1000000-0000-4000-8000-000000000003';
+export const JEETU_UUID      = 'a1000000-0000-4000-8000-000000000004';
 
 // Helper to format currency in INR ₹
 export function formatINR(val: number | null | undefined): string {
@@ -76,7 +76,7 @@ export function generateUUID(): string {
   });
 }
 
-const DEFAULT_USERS: (Profile & { password?: string })[] = [
+export const DEFAULT_USERS: (Profile & { password?: string })[] = [
   {
     id: SUPERADMIN_UUID,
     email: 'superadmin@leadflow.com',
@@ -92,7 +92,7 @@ const DEFAULT_USERS: (Profile & { password?: string })[] = [
     id: ADMIN_UUID,
     email: 'admin@leadflow.com',
     username: 'admin',
-    full_name: 'Sarah Jenkins',
+    full_name: 'Administrator',
     role: 'admin',
     is_active: true,
     phone: '+91 9876543201',
@@ -100,36 +100,36 @@ const DEFAULT_USERS: (Profile & { password?: string })[] = [
     created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
   },
   {
-    id: ALEX_UUID,
-    email: 'alex@leadflow.com',
-    username: 'alex',
-    full_name: 'Alex Rivera',
+    id: MANOJ_UUID,
+    email: 'manoj@leadflow.com',
+    username: 'manoj',
+    full_name: 'Manoj',
     role: 'telecaller',
     is_active: true,
     phone: '+91 9876543202',
-    password: 'alex123',
+    password: 'manoj123',
     created_at: new Date(Date.now() - 25 * 86400000).toISOString(),
   },
   {
-    id: PRIYA_UUID,
-    email: 'priya@leadflow.com',
-    username: 'priya',
-    full_name: 'Priya Sharma',
+    id: SURAJ_UUID,
+    email: 'suraj@leadflow.com',
+    username: 'suraj',
+    full_name: 'Suraj',
     role: 'telecaller',
     is_active: true,
     phone: '+91 9876543203',
-    password: 'priya123',
+    password: 'suraj123',
     created_at: new Date(Date.now() - 20 * 86400000).toISOString(),
   },
   {
-    id: MARCUS_UUID,
-    email: 'marcus@leadflow.com',
-    username: 'marcus',
-    full_name: 'Marcus Vance',
+    id: JEETU_UUID,
+    email: 'jeetu@leadflow.com',
+    username: 'jeetu',
+    full_name: 'Jeetu',
     role: 'telecaller',
     is_active: true,
     phone: '+91 9876543204',
-    password: 'marcus123',
+    password: 'jeetu123',
     created_at: new Date(Date.now() - 15 * 86400000).toISOString(),
   },
 ];
@@ -527,7 +527,7 @@ export class DatabaseService {
   private static instance: DatabaseService;
 
   private departments: Department[] = [...DEFAULT_DEPARTMENTS];
-  private users: Profile[] = [];
+  private users: Profile[] = [...DEFAULT_USERS];
   private statuses: LeadStatus[] = [...DEFAULT_STATUSES];
   private leads: Lead[] = [];
   private activities: LeadActivity[] = [];
@@ -549,9 +549,16 @@ export class DatabaseService {
   }
 
   private init() {
-    // Permanent source of truth is Supabase.
-    // Local memory caches are populated on app startup via checkSession() and syncFromSupabase().
     this.currentUser = null;
+    this.users = [...DEFAULT_USERS];
+    try {
+      const saved = localStorage.getItem('leadflow_local_user');
+      if (saved) {
+        this.currentUser = JSON.parse(saved);
+      }
+    } catch {
+      // ignore
+    }
   }
 
   // --- SUPABASE SINGLE SOURCE OF TRUTH SYNC ---
@@ -587,10 +594,22 @@ export class DatabaseService {
         .select('*')
         .order('created_at', { ascending: true });
       if (!profsErr && profs) {
-        this.users = profs.map(p => ({
+        const remoteIds = new Set(profs.map(p => p.id));
+        const remoteEmails = new Set(profs.map(p => (p.email || '').toLowerCase()));
+        const merged: Profile[] = profs.map(p => ({
           ...p,
           is_active: p.is_active !== undefined ? p.is_active : (p.active !== undefined ? p.active : true),
         }));
+
+        // Include default accounts (superadmin, admin, manoj, suraj, jeetu) so they are always present
+        DEFAULT_USERS.forEach(def => {
+          if (!remoteIds.has(def.id) && !remoteEmails.has(def.email.toLowerCase())) {
+            merged.push(def);
+          }
+        });
+
+        this.users = merged;
+
         // Update currentUser if in list
         if (this.currentUser) {
           const fresh = this.users.find(u => u.id === this.currentUser!.id);
@@ -634,6 +653,80 @@ export class DatabaseService {
     }
   }
 
+  // Synchronize all 5 pre-configured accounts directly into Supabase (profiles + auth)
+  public async syncDefaultUsersToSupabase(): Promise<{ success: boolean; message: string; count?: number }> {
+    const supabase = getSupabase();
+    if (!supabase) {
+      return { success: false, message: 'Supabase is not configured yet. Please enter your Supabase URL & Anon Key in Connection Settings.' };
+    }
+
+    try {
+      let createdCount = 0;
+      for (const u of DEFAULT_USERS) {
+        const now = new Date().toISOString();
+        const profileRec = {
+          id: u.id,
+          email: u.email,
+          full_name: u.full_name,
+          username: u.username,
+          role: u.role,
+          phone: u.phone || '',
+          mobile: u.phone || '',
+          is_active: true,
+          active: true,
+          created_at: u.created_at || now,
+        };
+
+        const { error } = await supabase.from('profiles').upsert([profileRec], { onConflict: 'id' });
+        if (error) {
+          const minimal = {
+            id: u.id,
+            email: u.email,
+            full_name: u.full_name,
+            username: u.username,
+            role: u.role,
+            phone: u.phone || '',
+            is_active: true,
+            created_at: u.created_at || now,
+          };
+          const fallback = await supabase.from('profiles').upsert([minimal], { onConflict: 'id' });
+          if (!fallback.error) createdCount++;
+        } else {
+          createdCount++;
+        }
+
+        // Try provisioning in Supabase Auth if password is known
+        if (u.password) {
+          try {
+            await supabase.auth.signUp({
+              email: u.email,
+              password: u.password,
+              options: {
+                data: {
+                  full_name: u.full_name,
+                  username: u.username,
+                  role: u.role,
+                },
+              },
+            });
+          } catch {
+            // Already registered or sign-up disabled
+          }
+        }
+      }
+
+      await this.syncFromSupabase();
+      return {
+        success: true,
+        message: `Successfully synchronized ${createdCount} users to Supabase profiles & auth!`,
+        count: createdCount,
+      };
+    } catch (err: any) {
+      console.error('Error syncing default users to Supabase:', err);
+      return { success: false, message: err?.message || 'Failed to sync users to Supabase' };
+    }
+  }
+
   // --- WIPE ALL DATA ---
   public async clearAllData(options?: { resetMasters?: boolean }) {
     const supabase = getSupabase();
@@ -657,6 +750,7 @@ export class DatabaseService {
       this.statuses = [...DEFAULT_STATUSES];
       this.fieldMaster = [...DEFAULT_FIELD_MASTER];
       this.importFieldMappings = [...DEFAULT_IMPORT_MAPPINGS];
+      this.users = [...DEFAULT_USERS];
     }
 
     if (supabase) {
@@ -671,18 +765,54 @@ export class DatabaseService {
 
   public setCurrentUser(user: Profile | null) {
     this.currentUser = user;
+    if (user) {
+      try {
+        localStorage.setItem('leadflow_local_user', JSON.stringify(user));
+      } catch {
+        // ignore
+      }
+    } else {
+      try {
+        localStorage.removeItem('leadflow_local_user');
+      } catch {
+        // ignore
+      }
+    }
   }
 
   public async checkSession(): Promise<{ user: Profile | null; error?: string }> {
     const supabase = getSupabase();
     if (!supabase) {
-      this.currentUser = null;
-      return { user: null };
+      try {
+        const saved = localStorage.getItem('leadflow_local_user');
+        if (saved) {
+          this.currentUser = JSON.parse(saved);
+          return { user: this.currentUser };
+        }
+      } catch {
+        // ignore
+      }
+      return { user: this.currentUser };
     }
 
     try {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       if (sessionError || !session?.user) {
+        // Fallback: Check local storage for persistent default user session
+        try {
+          const saved = localStorage.getItem('leadflow_local_user');
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            const isDef = DEFAULT_USERS.some(d => d.id === parsed.id || d.email.toLowerCase() === parsed.email?.toLowerCase());
+            if (isDef) {
+              this.currentUser = parsed;
+              return { user: this.currentUser };
+            }
+          }
+        } catch {
+          // ignore
+        }
+
         this.currentUser = null;
         return { user: null };
       }
@@ -695,6 +825,24 @@ export class DatabaseService {
         .single();
 
       if (profError || !profile) {
+        const matchDef = DEFAULT_USERS.find(d => d.email.toLowerCase() === (session.user.email || '').toLowerCase());
+        if (matchDef) {
+          const newProf = {
+            id: session.user.id,
+            email: matchDef.email,
+            full_name: matchDef.full_name,
+            username: matchDef.username,
+            role: matchDef.role,
+            phone: matchDef.phone || '',
+            is_active: true,
+            created_at: new Date().toISOString(),
+          };
+          await supabase.from('profiles').upsert([newProf]);
+          this.setCurrentUser(newProf);
+          await this.syncFromSupabase();
+          return { user: this.currentUser };
+        }
+
         console.error('Session user profile not found:', profError);
         this.currentUser = null;
         return { user: null };
@@ -703,7 +851,7 @@ export class DatabaseService {
       const isActive = profile.is_active !== undefined ? profile.is_active : (profile.active !== undefined ? profile.active : true);
       if (!isActive) {
         await supabase.auth.signOut();
-        this.currentUser = null;
+        this.setCurrentUser(null);
         return { user: null, error: 'Your account has been deactivated. Please contact your CRM administrator.' };
       }
 
@@ -712,7 +860,7 @@ export class DatabaseService {
         is_active: true,
       };
 
-      this.currentUser = activeProfile;
+      this.setCurrentUser(activeProfile);
       await this.syncFromSupabase();
       return { user: this.currentUser };
     } catch (err: any) {
@@ -734,43 +882,129 @@ export class DatabaseService {
       return { error: 'Password is required. Login is not permitted without a password.' };
     }
 
+    // Match against default predefined users (superadmin, admin, manoj, suraj, jeetu)
+    const defaultMatch = DEFAULT_USERS.find(u =>
+      (u.username && u.username.toLowerCase() === cleanId.toLowerCase()) ||
+      u.email.toLowerCase() === cleanId.toLowerCase()
+    );
+
     const supabase = getSupabase();
+
+    // MODE 1: Standalone / Vercel without Supabase configured yet
     if (!supabase) {
-      return { error: 'Supabase database is not configured. Please check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.' };
+      if (defaultMatch) {
+        if (defaultMatch.password === cleanPass) {
+          this.setCurrentUser(defaultMatch);
+          return { user: defaultMatch };
+        } else {
+          return { error: 'Incorrect password for user. Please verify your credentials.' };
+        }
+      }
+
+      const memUser = this.users.find(u =>
+        (u.username && u.username.toLowerCase() === cleanId.toLowerCase()) ||
+        u.email.toLowerCase() === cleanId.toLowerCase()
+      ) as (Profile & { password?: string }) | undefined;
+
+      if (memUser) {
+        if (!memUser.password || memUser.password === cleanPass) {
+          this.setCurrentUser(memUser);
+          return { user: memUser };
+        }
+        return { error: 'Incorrect password.' };
+      }
+
+      return { error: 'Invalid User ID / Email or password.' };
     }
 
+    // MODE 2: Connected to Supabase
     try {
       let targetEmail = cleanId;
 
-      // If user provided a username or user ID (no '@'), lookup their email in Supabase profiles table
+      // If user provided a username or user ID (no '@'), lookup their email
       if (!cleanId.includes('@')) {
-        const { data: profs } = await supabase
-          .from('profiles')
-          .select('email, username')
-          .ilike('username', cleanId);
-
-        if (profs && profs.length > 0 && profs[0].email) {
-          targetEmail = profs[0].email;
+        if (defaultMatch) {
+          targetEmail = defaultMatch.email;
         } else {
-          // If not found by username directly, try matching username prefix or email
-          const { data: allProfs } = await supabase.from('profiles').select('email, username');
-          const matched = allProfs?.find(p =>
-            (p.username && p.username.toLowerCase() === cleanId.toLowerCase()) ||
-            p.email.toLowerCase().startsWith(cleanId.toLowerCase() + '@')
-          );
-          if (matched?.email) {
-            targetEmail = matched.email;
+          const { data: profs } = await supabase
+            .from('profiles')
+            .select('email, username')
+            .ilike('username', cleanId);
+
+          if (profs && profs.length > 0 && profs[0].email) {
+            targetEmail = profs[0].email;
+          } else {
+            const { data: allProfs } = await supabase.from('profiles').select('email, username');
+            const matched = allProfs?.find(p =>
+              (p.username && p.username.toLowerCase() === cleanId.toLowerCase()) ||
+              p.email.toLowerCase().startsWith(cleanId.toLowerCase() + '@')
+            );
+            if (matched?.email) {
+              targetEmail = matched.email;
+            }
           }
         }
       }
 
-      // Execute real Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      // Execute Supabase Auth sign-in
+      let { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: targetEmail,
         password: cleanPass,
       });
 
+      // Auto-provisioning: If not registered in Supabase Auth yet, but matches known default credentials
+      if ((authError || !authData.user) && defaultMatch && defaultMatch.password === cleanPass) {
+        try {
+          const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
+            email: targetEmail,
+            password: cleanPass,
+            options: {
+              data: {
+                full_name: defaultMatch.full_name,
+                username: defaultMatch.username,
+                role: defaultMatch.role,
+              },
+            },
+          });
+
+          if (!signUpErr && signUpData.user) {
+            await supabase.from('profiles').upsert([{
+              id: signUpData.user.id,
+              email: defaultMatch.email,
+              full_name: defaultMatch.full_name,
+              username: defaultMatch.username,
+              role: defaultMatch.role,
+              phone: defaultMatch.phone || '',
+              mobile: defaultMatch.phone || '',
+              is_active: true,
+              active: true,
+              created_at: new Date().toISOString(),
+            }]);
+
+            const retry = await supabase.auth.signInWithPassword({
+              email: targetEmail,
+              password: cleanPass,
+            });
+            if (retry.data?.user) {
+              authData = retry.data;
+              authError = null;
+            } else if (signUpData.user) {
+              authData = { user: signUpData.user, session: signUpData.session } as any;
+              authError = null;
+            }
+          }
+        } catch (provErr) {
+          console.warn('Auto-provisioning notice:', provErr);
+        }
+      }
+
       if (authError || !authData.user) {
+        // Fallback for default predefined accounts
+        if (defaultMatch && defaultMatch.password === cleanPass) {
+          this.setCurrentUser(defaultMatch);
+          await this.syncFromSupabase();
+          return { user: this.currentUser };
+        }
         return { error: authError?.message || 'Invalid User ID / Email or password.' };
       }
 
@@ -782,19 +1016,36 @@ export class DatabaseService {
         .single();
 
       if (profError || !profile) {
+        if (defaultMatch) {
+          const profileRec = {
+            id: authData.user.id,
+            email: defaultMatch.email,
+            full_name: defaultMatch.full_name,
+            username: defaultMatch.username,
+            role: defaultMatch.role,
+            phone: defaultMatch.phone || '',
+            is_active: true,
+            created_at: new Date().toISOString(),
+          };
+          await supabase.from('profiles').upsert([profileRec]);
+          this.setCurrentUser(profileRec);
+          await this.syncFromSupabase();
+          return { user: this.currentUser };
+        }
         return { error: 'User profile not found in Supabase database. Please contact your administrator.' };
       }
 
       const isActive = profile.is_active !== undefined ? profile.is_active : (profile.active !== undefined ? profile.active : true);
       if (!isActive) {
         await supabase.auth.signOut();
+        this.setCurrentUser(null);
         return { error: 'Your account has been deactivated. Please contact your CRM administrator.' };
       }
 
-      this.currentUser = {
+      this.setCurrentUser({
         ...profile,
         is_active: true,
-      };
+      });
 
       // Synchronize database records from Supabase
       await this.syncFromSupabase();
@@ -802,6 +1053,10 @@ export class DatabaseService {
       return { user: this.currentUser };
     } catch (err: any) {
       console.error('Sign-in error:', err);
+      if (defaultMatch && defaultMatch.password === cleanPass) {
+        this.setCurrentUser(defaultMatch);
+        return { user: this.currentUser };
+      }
       return { error: err?.message || 'Authentication error. Please check your credentials.' };
     }
   }
@@ -815,7 +1070,7 @@ export class DatabaseService {
         console.warn('Supabase sign out error:', err);
       }
     }
-    this.currentUser = null;
+    this.setCurrentUser(null);
   }
 
   // --- DEPARTMENTS MASTER ---

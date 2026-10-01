@@ -175,9 +175,97 @@ export const LoginModal: React.FC<Props> = ({
             </button>
           </form>
 
-          <div className="mt-4 pt-3 border-t border-slate-100 text-center">
-            <span className="text-[11px] text-slate-400">
-              Authorized personnel only. Password verification enforced.
+          {/* Quick Pre-configured Accounts Selector */}
+          <div className="mt-4 pt-3 border-t border-slate-100">
+            <div className="text-[10px] uppercase font-bold tracking-wider text-slate-500 mb-2 flex items-center justify-between">
+              <span>Pre-configured Accounts (Click to Fill)</span>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+              <button
+                type="button"
+                onClick={() => {
+                  setIdentifier('superadmin');
+                  setPassword('superadmin123');
+                  setError(null);
+                }}
+                className="p-1.5 text-left rounded-lg bg-blue-50/80 hover:bg-blue-100 border border-blue-200/60 transition-colors"
+              >
+                <div className="font-bold text-blue-900 flex items-center justify-between">
+                  <span>Super Admin</span>
+                  <span className="text-[9px] bg-blue-200 text-blue-800 px-1 rounded">Admin</span>
+                </div>
+                <div className="text-[10px] text-slate-500 font-mono">superadmin123</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIdentifier('admin');
+                  setPassword('admin123');
+                  setError(null);
+                }}
+                className="p-1.5 text-left rounded-lg bg-blue-50/80 hover:bg-blue-100 border border-blue-200/60 transition-colors"
+              >
+                <div className="font-bold text-blue-900 flex items-center justify-between">
+                  <span>Admin</span>
+                  <span className="text-[9px] bg-blue-200 text-blue-800 px-1 rounded">Admin</span>
+                </div>
+                <div className="text-[10px] text-slate-500 font-mono">admin123</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIdentifier('manoj');
+                  setPassword('manoj123');
+                  setError(null);
+                }}
+                className="p-1.5 text-left rounded-lg bg-emerald-50/80 hover:bg-emerald-100 border border-emerald-200/60 transition-colors"
+              >
+                <div className="font-bold text-emerald-900 flex items-center justify-between">
+                  <span>Manoj</span>
+                  <span className="text-[9px] bg-emerald-200 text-emerald-800 px-1 rounded">Caller</span>
+                </div>
+                <div className="text-[10px] text-slate-500 font-mono">manoj123</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIdentifier('suraj');
+                  setPassword('suraj123');
+                  setError(null);
+                }}
+                className="p-1.5 text-left rounded-lg bg-emerald-50/80 hover:bg-emerald-100 border border-emerald-200/60 transition-colors"
+              >
+                <div className="font-bold text-emerald-900 flex items-center justify-between">
+                  <span>Suraj</span>
+                  <span className="text-[9px] bg-emerald-200 text-emerald-800 px-1 rounded">Caller</span>
+                </div>
+                <div className="text-[10px] text-slate-500 font-mono">suraj123</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIdentifier('jeetu');
+                  setPassword('jeetu123');
+                  setError(null);
+                }}
+                className="col-span-2 p-1.5 text-left rounded-lg bg-emerald-50/80 hover:bg-emerald-100 border border-emerald-200/60 transition-colors"
+              >
+                <div className="font-bold text-emerald-900 flex items-center justify-between">
+                  <span>Jeetu</span>
+                  <span className="text-[9px] bg-emerald-200 text-emerald-800 px-1 rounded">Telecaller</span>
+                </div>
+                <div className="text-[10px] text-slate-500 font-mono">jeetu123</div>
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-3 pt-2 text-center">
+            <span className="text-[10px] text-slate-400">
+              Same users supported across Vercel and Supabase environments.
             </span>
           </div>
         </div>

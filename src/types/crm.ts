@@ -192,3 +192,29 @@ export interface LeadImportRow {
   custom_fields?: Record<string, any>;
   [key: string]: any;
 }
+
+export interface AuthDiagnosticLog {
+  id: string;
+  timestamp: string;
+  timeDisplay: string;
+  inputIdentifier: string;
+  resolvedEmail: string;
+  lookupMethod: 'email_direct' | 'username_profiles_exact' | 'username_profiles_fuzzy' | 'fallback_as_is';
+  lookupDetail?: string;
+  supabaseUrl: string;
+  isSupabaseConfigured: boolean;
+  stage: 'input_validation' | 'client_check' | 'username_resolution' | 'signInWithPassword' | 'profile_fetch' | 'account_status' | 'success';
+  success: boolean;
+  exactErrorMessage: string;
+  errorName?: string;
+  errorCode?: string;
+  httpStatus?: number;
+  rawError?: any;
+  userPayload?: {
+    id?: string;
+    email?: string;
+    role?: string;
+    fullName?: string;
+  } | null;
+}
+
