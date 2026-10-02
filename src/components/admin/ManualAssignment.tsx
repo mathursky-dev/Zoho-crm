@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { db } from '../../lib/database';
+import { SUPABASE_FIX_RLS_SQL } from '../../lib/supabase';
 import {
   UserCheck,
   Building2,
@@ -12,6 +13,9 @@ import {
   Filter,
   AlertTriangle,
   Calendar,
+  Wrench,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { AdminView } from '../layout/Sidebar';
 
@@ -35,8 +39,15 @@ export const ManualAssignment: React.FC<Props> = ({ onNavigate }) => {
   const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
   const [targetUserId, setTargetUserId] = useState('');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [copiedRls, setCopiedRls] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [, setVersion] = useState(0);
+
+  const handleCopyRlsFix = () => {
+    navigator.clipboard.writeText(SUPABASE_FIX_RLS_SQL);
+    setCopiedRls(true);
+    setTimeout(() => setCopiedRls(false), 2500);
+  };
 
   // Subscribe to live Supabase Realtime updates
   React.useEffect(() => {
@@ -124,19 +135,48 @@ export const ManualAssignment: React.FC<Props> = ({ onNavigate }) => {
       </div>
 
       {feedback && (
-        <div
-          className={`p-4 rounded-xl text-xs font-semibold flex items-center space-x-2 ${
-            feedback.type === 'success'
-              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-              : 'bg-red-50 text-red-800 border border-red-200'
-          }`}
-        >
-          {feedback.type === 'success' ? (
-            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
-          ) : (
-            <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+        <div className="space-y-3 animate-in fade-in duration-150">
+          <div
+            className={`p-4 rounded-xl text-xs font-semibold flex items-center justify-between shadow-2xs ${
+              feedback.type === 'success'
+                ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                : 'bg-red-50 text-red-800 border border-red-200'
+            }`}
+          >
+            <div className="flex items-center space-x-2">
+              {feedback.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+              ) : (
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+              )}
+              <span>{feedback.message}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFeedback(null)}
+              className="text-slate-400 hover:text-slate-600 text-sm font-bold px-1"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Quick RLS Fix Helper Box */}
+          {feedback.type === 'error' && (feedback.message.toLowerCase().includes('row-level security') || feedback.message.toLowerCase().includes('rls')) && (
+            <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs">
+              <div className="flex items-center space-x-2">
+                <Wrench className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Supabase Row-Level Security policy is preventing lead updates. Run the 1-Click RLS fix.</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleCopyRlsFix}
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg shadow-xs transition-colors shrink-0 text-xs"
+              >
+                {copiedRls ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedRls ? 'Copied RLS Fix SQL!' : 'Copy 1-Click RLS Fix'}</span>
+              </button>
+            </div>
           )}
-          <span>{feedback.message}</span>
         </div>
       )}
 

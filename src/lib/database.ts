@@ -2509,78 +2509,182 @@ export class DatabaseService {
   public async assignLeads(leadIds: string[], assignToUserId: string): Promise<{ successCount: number; message: string; error?: string }> {
     const user = this.getCurrentUser();
     if (!user || user.role !== 'admin') {
-      return { successCount: 0, message: 'Unauthorized. Only admins can assign leads.', error: 'Unauthorized' };
+      return { successCount: 0, message: 'Unauthorized. Only administrators can assign leads.', error: 'Unauthorized' };
     }
 
     const targetUser = this.users.find(u => u.id === assignToUserId);
     if (!targetUser) {
-      return { successCount: 0, message: 'Assigned user not found or inactive.', error: 'User not found' };
+      return { successCount: 0, message: 'Assigned telecaller not found or inactive.', error: 'User not found' };
     }
 
     const now = new Date().toISOString();
     const supabase = getSupabase();
 
-    if (supabase) {
-      const validLeadIds = leadIds.filter(id => isValidUUID(id));
-      if (validLeadIds.length > 0) {
-        const { error: updateErr } = await supabase
+    if (!supabase) {
+      // Standalone / Local mode fallback
+      const updatedCount = leadIds.length;
+      this.leads = this.leads.map(lead => {
+        if (leadIds.includes(lead.id)) {
+          return {
+            ...lead,
+            assigned_to: targetUser.id,
+            assigned_at: now,
+            status: lead.status === 'Untouched' ? 'Assigned' : lead.status,
+            updated_at: now,
+          };
+        }
+        return lead;
+      });
+      this.notifyListeners();
+      return {
+        successCount: updatedCount,
+        message: `Assigned ${updatedCount} lead(s) to ${targetUser.full_name} (Local mode - Supabase is not connected).`,
+      };
+    }
+
+    // SUPABASE MODE:
+    // 1. Resolve valid lead UUIDs
+    const directUuids = leadIds.filter(id => isValidUUID(id));
+    const nonUuids = leadIds.filter(id => !isValidUUID(id));
+    let matchedUuids: string[] = [];
+    if (nonUuids.length > 0) {
+      matchedUuids = this.leads
+        .filter(l => nonUuids.includes(l.id) && isValidUUID(l.id))
+        .map(l => l.id);
+    }
+    const finalLeadIds = Array.from(new Set([...directUuids, ...matchedUuids]));
+
+    if (finalLeadIds.length === 0) {
+      return { successCount: 0, message: 'No valid lead UUIDs found to assign.', error: 'No valid leads' };
+    }
+
+    // 2. Ensure target telecaller and admin profile exist in Supabase `profiles` table to satisfy foreign key constraint
+    try {
+      await supabase.from('profiles').upsert([
+        {
+          id: targetUser.id,
+          email: targetUser.email,
+          full_name: targetUser.full_name,
+          username: targetUser.username,
+          role: targetUser.role,
+          phone: targetUser.phone || '',
+          is_active: true,
+          active: true,
+          created_at: targetUser.created_at || now,
+        },
+        {
+          id: user.id,
+          email: user.email,
+          full_name: user.full_name,
+          username: user.username,
+          role: user.role,
+          phone: user.phone || '',
+          is_active: true,
+          active: true,
+          created_at: user.created_at || now,
+        },
+      ], { onConflict: 'id' });
+    } catch (e) {
+      console.warn('Profiles pre-sync warning:', e);
+    }
+
+    // 3. Update table `leads` in Supabase
+    let { error: updateErr } = await supabase
+      .from('leads')
+      .update({
+        assigned_to: targetUser.id,
+        assigned_at: now,
+        updated_at: now,
+      })
+      .in('id', finalLeadIds);
+
+    // Auto-fallback A: If `assigned_at` column is missing in older Supabase schema (code 42703)
+    if (updateErr && (updateErr.code === '42703' || String(updateErr.message).includes('assigned_at'))) {
+      const retry = await supabase
+        .from('leads')
+        .update({
+          assigned_to: targetUser.id,
+          updated_at: now,
+        })
+        .in('id', finalLeadIds);
+      updateErr = retry.error;
+    }
+
+    // Auto-fallback B: If Foreign Key constraint failed on profiles (code 23503)
+    if (updateErr && (updateErr.code === '23503' || String(updateErr.message).includes('profiles') || String(updateErr.message).includes('assigned_to'))) {
+      try {
+        await supabase.from('profiles').insert([{
+          id: targetUser.id,
+          email: targetUser.email,
+          full_name: targetUser.full_name,
+          username: targetUser.username,
+          role: targetUser.role,
+        }]);
+        const retry = await supabase
           .from('leads')
           .update({
             assigned_to: targetUser.id,
-            assigned_at: now,
+            updated_at: now,
           })
-          .in('id', validLeadIds);
-
-        if (updateErr) {
-          console.error('Failed to assign leads in Supabase:', updateErr);
-          return { successCount: 0, message: 'Failed to assign leads in database.', error: updateErr.message };
-        }
-
-        // Requirement 7 & 8: Complete assignment history audit log in Supabase
-        const newAssignments = validLeadIds.map(leadId => {
-          const existingLead = this.leads.find(l => l.id === leadId);
-          return {
-            id: generateUUID(),
-            lead_id: leadId,
-            previous_user_id: sanitizeUUID(existingLead?.assigned_to),
-            assigned_to: targetUser.id,
-            assigned_by: user.id,
-            department_id: sanitizeUUID(existingLead?.department_id),
-            assigned_at: now,
-          };
-        });
-
-        await supabase.from('lead_assignments').insert(newAssignments);
-
-        // Record activity logs in Supabase
-        const activityRows = validLeadIds.map(leadId => ({
-          id: generateUUID(),
-          lead_id: leadId,
-          user_id: user.id,
-          user_name: user.full_name,
-          status: 'Assigned',
-          remark: `Lead assigned to ${targetUser.full_name} by Admin`,
-          created_at: now,
-        }));
-
-        await supabase.from('lead_activities').insert(activityRows);
+          .in('id', finalLeadIds);
+        updateErr = retry.error;
+      } catch {
+        // ignore
       }
-
-      // Re-fetch all updated data from Supabase (single source of truth)
-      const { data: refreshedLeads } = await supabase.from('leads').select('*').order('created_at', { ascending: false });
-      if (refreshedLeads) this.leads = this.mapLeadsFromSupabase(refreshedLeads);
-
-      const { data: refreshedAssigns } = await supabase.from('lead_assignments').select('*').order('created_at', { ascending: false });
-      if (refreshedAssigns) this.leadAssignments = refreshedAssigns;
-
-      const { data: refreshedActs } = await supabase.from('lead_activities').select('*').order('created_at', { ascending: false });
-      if (refreshedActs) this.activities = refreshedActs;
-
-      this.notifyListeners();
-      return { successCount: leadIds.length, message: `Successfully assigned ${leadIds.length} lead(s) to ${targetUser.full_name}.` };
     }
 
-    return { successCount: 0, message: 'Database not connected.', error: 'No database' };
+    if (updateErr) {
+      console.error('Failed to assign leads in Supabase:', updateErr);
+      const isRls = updateErr.message?.toLowerCase().includes('row-level security') || updateErr.message?.toLowerCase().includes('rls');
+      const errorMsg = isRls
+        ? 'Failed to assign leads: Supabase Row-Level Security (RLS) is blocking UPDATE on table "leads". Please run the 1-Click RLS Fix script in Supabase SQL Editor.'
+        : `Failed to assign leads in database: ${updateErr.message}`;
+      return { successCount: 0, message: errorMsg, error: updateErr.message };
+    }
+
+    // 4. Record assignment history & activity log in background (non-blocking)
+    try {
+      const newAssignments = finalLeadIds.map(leadId => {
+        const existingLead = this.leads.find(l => l.id === leadId);
+        return {
+          id: generateUUID(),
+          lead_id: leadId,
+          previous_user_id: isValidUUID(existingLead?.assigned_to) ? existingLead?.assigned_to : null,
+          assigned_to: targetUser.id,
+          assigned_by: isValidUUID(user.id) ? user.id : null,
+          department_id: isValidUUID(existingLead?.department_id) ? existingLead?.department_id : null,
+          assigned_at: now,
+        };
+      });
+      await supabase.from('lead_assignments').insert(newAssignments);
+    } catch (e) {
+      console.warn('Could not record assignment history audit log:', e);
+    }
+
+    try {
+      const activityRows = finalLeadIds.map(leadId => ({
+        id: generateUUID(),
+        lead_id: leadId,
+        user_id: isValidUUID(user.id) ? user.id : null,
+        user_name: user.full_name,
+        status: 'Assigned',
+        remark: `Lead assigned to ${targetUser.full_name} by Admin`,
+        created_at: now,
+      }));
+      await supabase.from('lead_activities').insert(activityRows);
+    } catch (e) {
+      console.warn('Could not record activity log:', e);
+    }
+
+    // 5. Re-fetch updated data from Supabase (single source of truth)
+    await this.syncLeadsFromSupabase();
+    await this.syncActivitiesFromSupabase();
+    this.notifyListeners();
+
+    return {
+      successCount: finalLeadIds.length,
+      message: `Successfully assigned ${finalLeadIds.length} lead(s) to ${targetUser.full_name}.`,
+    };
   }
 
   // --- ASSIGNMENT HISTORY (AUDIT TRAIL) ---
@@ -3116,6 +3220,7 @@ export class DatabaseService {
 
     const updatePayload: Record<string, any> = {
       last_activity_at: now,
+      updated_at: now,
     };
 
     if (updates.status !== undefined) updatePayload.status = updates.status;
