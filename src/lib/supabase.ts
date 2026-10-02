@@ -111,6 +111,29 @@ export const getSupabase = (): SupabaseClient | null => {
   return supabaseInstance;
 };
 
+// Direct client export for imports like `import { supabase } from '../lib/supabase'`
+export const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
+  get(_target, prop) {
+    const client = getSupabase();
+    if (!client) {
+      if (prop === 'channel') {
+        return () => ({
+          on: function() { return this; },
+          subscribe: function() { return this; },
+        });
+      }
+      if (prop === 'removeChannel') {
+        return () => Promise.resolve('ok');
+      }
+      return undefined;
+    }
+    const val = (client as any)[prop];
+    return typeof val === 'function' ? val.bind(client) : val;
+  },
+});
+
+export default supabase;
+
 // SQL Schema for Supabase Setup with RLS
 export const SUPABASE_SQL_SCHEMA = `-- ========================================================
 -- LeadFlow CRM - Complete Supabase Database Schema & RLS

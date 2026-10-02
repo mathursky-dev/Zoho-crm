@@ -53,6 +53,7 @@ export type StandardLeadStatus =
 
 export interface Lead {
   id: string;
+  company_id?: string;
   lead_code: string; // e.g. LEAD-1001
   customer_name: string;
   mobile: string;

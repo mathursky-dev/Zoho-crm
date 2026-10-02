@@ -753,6 +753,7 @@ export class DatabaseService {
       const user = this.users.find(u => u.id === l.assigned_to);
       return {
         ...l,
+        company_id: l.company_id || 'default_company',
         department_id: sanitizeUUID(l.department_id) || l.department_id,
         department_name: dept?.name || l.department_name || 'General',
         assigned_to_name: user?.full_name || l.assigned_to_name || (l.assigned_to ? 'Assigned' : null),
@@ -2691,6 +2692,7 @@ export class DatabaseService {
       status: data.status || 'Untouched',
       remark: data.remark?.trim() || 'Manually created lead',
       assigned_to: null,
+      company_id: 'default_company',
       created_at: now,
     };
 
@@ -3000,6 +3002,7 @@ export class DatabaseService {
           source: l.source,
           status: l.status,
           assigned_to: null,
+          company_id: 'default_company',
           remark: l.remark,
           created_at: l.created_at || new Date().toISOString(),
         };
