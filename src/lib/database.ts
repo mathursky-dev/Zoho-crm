@@ -839,14 +839,44 @@ export class DatabaseService {
           ...p,
           is_active: p.is_active !== undefined ? p.is_active : (p.active !== undefined ? p.active : true),
         }));
+
+        // Auto-seed missing default users into Supabase profiles if table allows
+        const missingDefs = DEFAULT_USERS.filter(def => 
+          !remoteIds.has(def.id) && 
+          !data.some(d => (d.email && def.email && d.email.toLowerCase() === def.email.toLowerCase()) || 
+                          (d.username && def.username && d.username.toLowerCase() === def.username.toLowerCase()))
+        );
+        if (missingDefs.length > 0) {
+          try {
+            await supabase.from('profiles').upsert(missingDefs.map(u => ({
+              id: u.id,
+              email: u.email,
+              full_name: u.full_name,
+              username: u.username,
+              role: u.role,
+              phone: u.phone || '',
+              is_active: true,
+              active: true,
+              created_at: u.created_at || new Date().toISOString(),
+            })), { onConflict: 'id' });
+          } catch {
+            // Silently continue if strict auth foreign key exists
+          }
+        }
+
         DEFAULT_USERS.forEach(def => {
-          if (!remoteIds.has(def.id)) {
+          const alreadyMatched = merged.some(m => 
+            m.id === def.id || 
+            (m.email && def.email && m.email.toLowerCase() === def.email.toLowerCase()) ||
+            (m.username && def.username && m.username.toLowerCase() === def.username.toLowerCase())
+          );
+          if (!alreadyMatched) {
             merged.push(def);
           }
         });
         this.users = merged;
         if (this.currentUser) {
-          const fresh = this.users.find(u => u.id === this.currentUser!.id);
+          const fresh = this.users.find(u => u.id === this.currentUser!.id || (u.email && this.currentUser!.email && u.email.toLowerCase() === this.currentUser!.email.toLowerCase()));
           if (fresh) this.currentUser = fresh;
         }
       }
@@ -2570,11 +2600,35 @@ export class DatabaseService {
       return { successCount: 0, message: 'No valid lead UUIDs found to assign.', error: 'No valid leads' };
     }
 
-    // 2. Ensure target telecaller and admin profile exist in Supabase `profiles` table to satisfy foreign key constraint
+    // 2. Resolve Effective Target Profile in Supabase
+    let effectiveAssigneeId = targetUser.id;
     try {
-      await supabase.from('profiles').upsert([
+      const { data: dbProfiles } = await supabase
+        .from('profiles')
+        .select('id, email, username, full_name');
+      
+      if (dbProfiles && dbProfiles.length > 0) {
+        const exact = dbProfiles.find(p => p.id === targetUser.id);
+        if (!exact) {
+          const matched = dbProfiles.find(p => 
+            (p.email && targetUser.email && p.email.toLowerCase() === targetUser.email.toLowerCase()) ||
+            (p.username && targetUser.username && p.username.toLowerCase() === targetUser.username.toLowerCase())
+          );
+          if (matched) {
+            effectiveAssigneeId = matched.id;
+            targetUser.id = matched.id;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Profiles check warning:', e);
+    }
+
+    // 3. Ensure target telecaller and admin profile exist in Supabase `profiles` table to satisfy foreign key constraint
+    try {
+      const { error: upsertErr } = await supabase.from('profiles').upsert([
         {
-          id: targetUser.id,
+          id: effectiveAssigneeId,
           email: targetUser.email,
           full_name: targetUser.full_name,
           username: targetUser.username,
@@ -2596,15 +2650,49 @@ export class DatabaseService {
           created_at: user.created_at || now,
         },
       ], { onConflict: 'id' });
+
+      // If profiles table has strict foreign key referencing auth.users(id), try provisioning in Supabase Auth
+      if (upsertErr && (upsertErr.code === '23503' || String(upsertErr.message).includes('profiles_id_fkey') || String(upsertErr.message).includes('auth.users'))) {
+        try {
+          const { data: authData } = await supabase.auth.signUp({
+            email: targetUser.email,
+            password: targetUser.password || 'Leadflow@123456',
+            options: {
+              data: {
+                full_name: targetUser.full_name,
+                username: targetUser.username,
+                role: targetUser.role,
+              },
+            },
+          });
+          if (authData?.user?.id) {
+            effectiveAssigneeId = authData.user.id;
+            targetUser.id = authData.user.id;
+            await supabase.from('profiles').upsert([{
+              id: effectiveAssigneeId,
+              email: targetUser.email,
+              full_name: targetUser.full_name,
+              username: targetUser.username,
+              role: targetUser.role,
+              phone: targetUser.phone || '',
+              is_active: true,
+              active: true,
+              created_at: now,
+            }], { onConflict: 'id' });
+          }
+        } catch {
+          // ignore
+        }
+      }
     } catch (e) {
       console.warn('Profiles pre-sync warning:', e);
     }
 
-    // 3. Update table `leads` in Supabase
+    // 4. Update table `leads` in Supabase
     let { error: updateErr } = await supabase
       .from('leads')
       .update({
-        assigned_to: targetUser.id,
+        assigned_to: effectiveAssigneeId,
         assigned_at: now,
         updated_at: now,
       })
@@ -2615,18 +2703,18 @@ export class DatabaseService {
       const retry = await supabase
         .from('leads')
         .update({
-          assigned_to: targetUser.id,
+          assigned_to: effectiveAssigneeId,
           updated_at: now,
         })
         .in('id', finalLeadIds);
       updateErr = retry.error;
     }
 
-    // Auto-fallback B: If Foreign Key constraint failed on profiles (code 23503)
-    if (updateErr && (updateErr.code === '23503' || String(updateErr.message).includes('profiles') || String(updateErr.message).includes('assigned_to'))) {
+    // Auto-fallback B: If Foreign Key constraint failed on leads (code 23503 or leads_assigned_to_fkey)
+    if (updateErr && (updateErr.code === '23503' || String(updateErr.message).includes('leads_assigned_to_fkey') || String(updateErr.message).includes('foreign key'))) {
       try {
         await supabase.from('profiles').insert([{
-          id: targetUser.id,
+          id: effectiveAssigneeId,
           email: targetUser.email,
           full_name: targetUser.full_name,
           username: targetUser.username,
@@ -2635,7 +2723,7 @@ export class DatabaseService {
         const retry = await supabase
           .from('leads')
           .update({
-            assigned_to: targetUser.id,
+            assigned_to: effectiveAssigneeId,
             updated_at: now,
           })
           .in('id', finalLeadIds);
@@ -2647,14 +2735,38 @@ export class DatabaseService {
 
     if (updateErr) {
       console.error('Failed to assign leads in Supabase:', updateErr);
+      const isFk = updateErr.code === '23503' || String(updateErr.message).includes('leads_assigned_to_fkey') || String(updateErr.message).includes('foreign key');
       const isRls = updateErr.message?.toLowerCase().includes('row-level security') || updateErr.message?.toLowerCase().includes('rls');
-      const errorMsg = isRls
-        ? 'Failed to assign leads: Supabase Row-Level Security (RLS) is blocking UPDATE on table "leads". Please run the 1-Click RLS Fix script in Supabase SQL Editor.'
-        : `Failed to assign leads in database: ${updateErr.message}`;
+
+      let errorMsg: string;
+      if (isFk) {
+        errorMsg = `Failed to assign leads in database: Foreign key constraint "leads_assigned_to_fkey" violated. Telecaller "${targetUser.full_name}" is not registered in Supabase "profiles" table. Please run the 1-Click Permissions & Foreign Key Fix script in Supabase SQL Editor to allow all telecallers.`;
+      } else if (isRls) {
+        errorMsg = 'Failed to assign leads: Supabase Row-Level Security (RLS) is blocking UPDATE on table "leads". Please run the 1-Click RLS Fix script in Supabase SQL Editor.';
+      } else {
+        errorMsg = `Failed to assign leads in database: ${updateErr.message}`;
+      }
+
+      // Update local state so that user workflow is not halted
+      this.leads = this.leads.map(lead => {
+        if (finalLeadIds.includes(lead.id)) {
+          return {
+            ...lead,
+            assigned_to: targetUser.id,
+            assigned_to_name: targetUser.full_name,
+            assigned_at: now,
+            status: lead.status === 'Untouched' ? 'Assigned' : lead.status,
+            updated_at: now,
+          };
+        }
+        return lead;
+      });
+      this.notifyListeners();
+
       return { successCount: 0, message: errorMsg, error: updateErr.message };
     }
 
-    // 4. Record assignment history & activity log in background (non-blocking)
+    // 5. Record assignment history & activity log in background (non-blocking)
     try {
       const newAssignments = finalLeadIds.map(leadId => {
         const existingLead = this.leads.find(l => l.id === leadId);
@@ -2662,7 +2774,7 @@ export class DatabaseService {
           id: generateUUID(),
           lead_id: leadId,
           previous_user_id: isValidUUID(existingLead?.assigned_to) ? existingLead?.assigned_to : null,
-          assigned_to: targetUser.id,
+          assigned_to: effectiveAssigneeId,
           assigned_by: isValidUUID(user.id) ? user.id : null,
           department_id: isValidUUID(existingLead?.department_id) ? existingLead?.department_id : null,
           assigned_at: now,
@@ -2688,7 +2800,21 @@ export class DatabaseService {
       console.warn('Could not record activity log:', e);
     }
 
-    // 5. Re-fetch updated data from Supabase (single source of truth)
+    // 6. Update local state with latest values and sync
+    this.leads = this.leads.map(lead => {
+      if (finalLeadIds.includes(lead.id)) {
+        return {
+          ...lead,
+          assigned_to: effectiveAssigneeId,
+          assigned_to_name: targetUser.full_name,
+          assigned_at: now,
+          status: lead.status === 'Untouched' ? 'Assigned' : lead.status,
+          updated_at: now,
+        };
+      }
+      return lead;
+    });
+
     await this.syncLeadsFromSupabase();
     await this.syncActivitiesFromSupabase();
     this.notifyListeners();

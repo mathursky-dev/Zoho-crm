@@ -119,7 +119,7 @@ export const AllLeads: React.FC<Props> = ({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [targetUserId, setTargetUserId] = useState('');
-  const [assignMessage, setAssignMessage] = useState<string | null>(null);
+  const [assignFeedback, setAssignFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Fetch leads based on filters
   const leads = db.getLeads({
@@ -201,11 +201,13 @@ export const AllLeads: React.FC<Props> = ({
   const handleBulkAssign = async () => {
     if (!targetUserId || selectedIds.length === 0) return;
     const res = await db.assignLeads(selectedIds, targetUserId);
-    setAssignMessage(res.message);
+    setAssignFeedback({ type: res.error ? 'error' : 'success', message: res.message });
     setSelectedIds([]);
     setIsAssignModalOpen(false);
     setTargetUserId('');
-    setTimeout(() => setAssignMessage(null), 4500);
+    if (!res.error) {
+      setTimeout(() => setAssignFeedback(null), 4500);
+    }
   };
 
   const handleCreateLead = async (e: React.FormEvent) => {
@@ -249,8 +251,8 @@ export const AllLeads: React.FC<Props> = ({
         source: 'Direct Inbound',
         remark: '',
       });
-      setAssignMessage(`Lead created successfully in Supabase!`);
-      setTimeout(() => setAssignMessage(null), 4000);
+      setAssignFeedback({ type: 'success', message: 'Lead created successfully in Supabase!' });
+      setTimeout(() => setAssignFeedback(null), 4000);
     } else {
       setModalError(res.error || 'Failed to create lead in database.');
     }
@@ -269,11 +271,11 @@ export const AllLeads: React.FC<Props> = ({
     setIsDeleteModalOpen(false);
     if (res.success) {
       setSelectedIds(prev => prev.filter(id => !leadsToDelete.includes(id)));
-      setAssignMessage(`Permanently deleted ${res.count} lead(s) from Supabase.`);
-      setTimeout(() => setAssignMessage(null), 4000);
+      setAssignFeedback({ type: 'success', message: `Permanently deleted ${res.count} lead(s) from Supabase.` });
+      setTimeout(() => setAssignFeedback(null), 4000);
     } else {
-      setAssignMessage(`Error deleting leads: ${res.error}`);
-      setTimeout(() => setAssignMessage(null), 5000);
+      setAssignFeedback({ type: 'error', message: `Error deleting leads: ${res.error}` });
+      setTimeout(() => setAssignFeedback(null), 5000);
     }
     setLeadsToDelete([]);
   };
@@ -492,15 +494,58 @@ export const AllLeads: React.FC<Props> = ({
         </div>
       </div>
 
-      {assignMessage && (
-        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs font-semibold text-emerald-800 flex items-center justify-between shadow-2xs">
-          <div className="flex items-center space-x-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-            <span>{assignMessage}</span>
+      {assignFeedback && (
+        <div className="space-y-3">
+          <div
+            className={`p-3 rounded-xl text-xs font-semibold flex items-center justify-between shadow-2xs ${
+              assignFeedback.type === 'success'
+                ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                : 'bg-red-50 text-red-800 border border-red-200'
+            }`}
+          >
+            <div className="flex items-center space-x-2">
+              {assignFeedback.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              ) : (
+                <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+              )}
+              <span>{assignFeedback.message}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAssignFeedback(null)}
+              className="text-slate-400 hover:text-slate-600 text-sm font-bold px-1 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
-          <button onClick={() => setAssignMessage(null)}>
-            <X className="w-4 h-4 text-emerald-600" />
-          </button>
+
+          {/* Quick RLS & Foreign Key Fix Helper Box */}
+          {assignFeedback.type === 'error' && (
+            assignFeedback.message.toLowerCase().includes('row-level security') ||
+            assignFeedback.message.toLowerCase().includes('rls') ||
+            assignFeedback.message.toLowerCase().includes('foreign key') ||
+            assignFeedback.message.toLowerCase().includes('leads_assigned_to_fkey')
+          ) && (
+            <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs">
+              <div className="flex items-center space-x-2">
+                <Wrench className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>
+                  {assignFeedback.message.toLowerCase().includes('foreign key') || assignFeedback.message.toLowerCase().includes('leads_assigned_to_fkey')
+                    ? 'Supabase foreign key constraint requires telecallers to exist in profiles. Run the 1-Click Permissions & FK fix in Supabase.'
+                    : 'Supabase Row-Level Security policy is preventing lead updates. Run the 1-Click RLS fix in Supabase.'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleCopyRlsFix}
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg shadow-xs transition-colors shrink-0 text-xs cursor-pointer"
+              >
+                {copiedRls ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedRls ? 'Copied 1-Click SQL Fix!' : 'Copy 1-Click Fix SQL'}</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
 

@@ -160,20 +160,29 @@ export const ManualAssignment: React.FC<Props> = ({ onNavigate }) => {
             </button>
           </div>
 
-          {/* Quick RLS Fix Helper Box */}
-          {feedback.type === 'error' && (feedback.message.toLowerCase().includes('row-level security') || feedback.message.toLowerCase().includes('rls')) && (
+          {/* Quick RLS & Foreign Key Fix Helper Box */}
+          {feedback.type === 'error' && (
+            feedback.message.toLowerCase().includes('row-level security') ||
+            feedback.message.toLowerCase().includes('rls') ||
+            feedback.message.toLowerCase().includes('foreign key') ||
+            feedback.message.toLowerCase().includes('leads_assigned_to_fkey')
+          ) && (
             <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs">
               <div className="flex items-center space-x-2">
                 <Wrench className="w-4 h-4 text-amber-600 shrink-0" />
-                <span>Supabase Row-Level Security policy is preventing lead updates. Run the 1-Click RLS fix.</span>
+                <span>
+                  {feedback.message.toLowerCase().includes('foreign key') || feedback.message.toLowerCase().includes('leads_assigned_to_fkey')
+                    ? 'Supabase foreign key constraint requires telecallers to exist in profiles. Run the 1-Click Permissions & FK fix.'
+                    : 'Supabase Row-Level Security policy is preventing lead updates. Run the 1-Click RLS fix.'}
+                </span>
               </div>
               <button
                 type="button"
                 onClick={handleCopyRlsFix}
-                className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg shadow-xs transition-colors shrink-0 text-xs"
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg shadow-xs transition-colors shrink-0 text-xs cursor-pointer"
               >
                 {copiedRls ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copiedRls ? 'Copied RLS Fix SQL!' : 'Copy 1-Click RLS Fix'}</span>
+                <span>{copiedRls ? 'Copied 1-Click SQL Fix!' : 'Copy 1-Click Fix SQL'}</span>
               </button>
             </div>
           )}

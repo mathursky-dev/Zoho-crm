@@ -250,9 +250,9 @@ CREATE TABLE IF NOT EXISTS public.departments (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 3. Profiles (Users) Table linked to Supabase Auth
+-- 3. Profiles (Users) Table
 CREATE TABLE IF NOT EXISTS public.profiles (
-  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   company_id TEXT DEFAULT 'default_company',
   email TEXT NOT NULL,
   full_name TEXT NOT NULL,
@@ -748,4 +748,41 @@ CREATE POLICY "Allow all on lead_assignments" ON public.lead_assignments
   FOR ALL TO public
   USING (true)
   WITH CHECK (true);
+
+-- 8. Fix Foreign Key Constraints on leads and profiles for Lead Assignment
+-- Fixes: "insert or update on table 'leads' violates foreign key constraint 'leads_assigned_to_fkey'"
+ALTER TABLE public.leads DROP CONSTRAINT IF EXISTS leads_assigned_to_fkey;
+ALTER TABLE public.leads DROP CONSTRAINT IF EXISTS fk_leads_assigned_to;
+ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_id_fkey;
+ALTER TABLE public.lead_assignments DROP CONSTRAINT IF EXISTS lead_assignments_assigned_to_fkey;
+ALTER TABLE public.lead_assignments DROP CONSTRAINT IF EXISTS lead_assignments_previous_user_id_fkey;
+ALTER TABLE public.lead_assignments DROP CONSTRAINT IF EXISTS lead_assignments_assigned_by_fkey;
+ALTER TABLE public.lead_activities DROP CONSTRAINT IF EXISTS lead_activities_user_id_fkey;
+ALTER TABLE public.followups DROP CONSTRAINT IF EXISTS followups_user_id_fkey;
+
+-- Ensure default CRM telecallers & administrators exist in public.profiles
+INSERT INTO public.profiles (id, email, full_name, username, role, is_active, active)
+VALUES 
+  ('a1000000-0000-4000-8000-000000000000', 'superadmin@leadflow.com', 'Super Administrator', 'superadmin', 'admin', true, true),
+  ('a1000000-0000-4000-8000-000000000001', 'admin@leadflow.com', 'Administrator', 'admin', 'admin', true, true),
+  ('a1000000-0000-4000-8000-000000000002', 'manoj@leadflow.com', 'Manoj', 'manoj', 'telecaller', true, true),
+  ('a1000000-0000-4000-8000-000000000003', 'suraj@leadflow.com', 'Suraj', 'suraj', 'telecaller', true, true),
+  ('a1000000-0000-4000-8000-000000000004', 'jeetu@leadflow.com', 'Jeetu', 'jeetu', 'telecaller', true, true)
+ON CONFLICT (id) DO UPDATE SET 
+  full_name = EXCLUDED.full_name,
+  role = EXCLUDED.role,
+  is_active = true,
+  active = true;
+
+-- Ensure leads.assigned_to safely references public.profiles(id)
+DO $$
+BEGIN
+  BEGIN
+    ALTER TABLE public.leads 
+      ADD CONSTRAINT leads_assigned_to_fkey 
+      FOREIGN KEY (assigned_to) REFERENCES public.profiles(id) ON DELETE SET NULL;
+  EXCEPTION WHEN OTHERS THEN
+    NULL;
+  END;
+END $$;
 `;
