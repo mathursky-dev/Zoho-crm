@@ -283,6 +283,14 @@ export default function App() {
           onClose={() => {}}
           canClose={false}
           onLoginSuccess={handleUserChanged}
+          onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
+        />
+
+        {/* Allow Supabase configuration and 1-click RLS fix from Login view */}
+        <SupabaseModal
+          isOpen={isSupabaseModalOpen}
+          onClose={() => setIsSupabaseModalOpen(false)}
+          onConfigChanged={refreshData}
         />
       </div>
     );

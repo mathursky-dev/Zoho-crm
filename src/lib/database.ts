@@ -1411,6 +1411,29 @@ export class DatabaseService {
     this.setCurrentUser(null);
   }
 
+  public async resetPassword(email: string): Promise<{ success: boolean; error?: string }> {
+    const supabase = getSupabase();
+    if (!supabase) {
+      return { success: false, error: 'Supabase database is not connected.' };
+    }
+    try {
+      const { getAuthRedirectUrl } = await import('./supabase');
+      const redirectTo = getAuthRedirectUrl('/login');
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo,
+      });
+      if (error) throw error;
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to send password reset request.' };
+    }
+  }
+
+  public async pingSupabase(): Promise<{ success: boolean; message: string; host?: string }> {
+    const { testSupabaseConnection } = await import('./supabase');
+    return testSupabaseConnection();
+  }
+
   // --- DEPARTMENTS MASTER ---
   public getDepartments(includeInactive = false): Department[] {
     this.departments = this.departments.map(d => ({

@@ -156,6 +156,23 @@ export const SupabaseModal: React.FC<Props> = ({ isOpen, onClose, onConfigChange
                 LeadFlow CRM runs seamlessly with high-fidelity local state and demo data out-of-the-box. When you enter your Supabase URL & Anon Key, it connects directly with your live PostgreSQL tables and Row-Level Security!
               </div>
 
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs space-y-1.5 text-slate-700">
+                <div className="font-bold flex items-center gap-1.5 text-slate-900">
+                  <span className="w-2 h-2 rounded-full bg-blue-600" />
+                  <span>Vercel Multi-Browser & Deployment Settings:</span>
+                </div>
+                <p className="text-[11px] text-slate-600">
+                  To ensure Supabase connects automatically on <strong>every browser, device, and Preview URL</strong> without entering keys again, configure in Vercel Dashboard:
+                </p>
+                <div className="bg-slate-900 text-slate-100 p-2.5 rounded font-mono text-[11px] space-y-1">
+                  <div>VITE_SUPABASE_URL = https://&lt;project-ref&gt;.supabase.co</div>
+                  <div>VITE_SUPABASE_ANON_KEY = &lt;your-anon-public-key&gt;</div>
+                </div>
+                <p className="text-[10px] text-slate-500">
+                  * In Vercel Settings → Environment Variables, check all 3 scopes: <strong>Production</strong>, <strong>Preview</strong>, and <strong>Development</strong>.
+                </p>
+              </div>
+
               <div>
                 <label className="block text-xs font-bold uppercase text-slate-600 mb-1">
                   Supabase Project URL

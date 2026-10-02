@@ -2,11 +2,26 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 // Environment variables or localStorage stored credentials
 const getStoredCredentials = () => {
-  const envUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
-  const envKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
+  // Support standard Vite prefixes, Next.js prefixes, and raw prefixes across Vercel environments
+  const envUrl = (
+    (import.meta.env.VITE_SUPABASE_URL as string) ||
+    (import.meta.env.NEXT_PUBLIC_SUPABASE_URL as string) ||
+    (import.meta.env.SUPABASE_URL as string) ||
+    (import.meta.env.VITE_PUBLIC_SUPABASE_URL as string) ||
+    ''
+  ).trim();
+
+  const envKey = (
+    (import.meta.env.VITE_SUPABASE_ANON_KEY as string) ||
+    (import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string) ||
+    (import.meta.env.SUPABASE_ANON_KEY as string) ||
+    (import.meta.env.VITE_SUPABASE_KEY as string) ||
+    (import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string) ||
+    ''
+  ).trim();
   
-  const localUrl = (localStorage.getItem('leadflow_supabase_url') || '').trim();
-  const localKey = (localStorage.getItem('leadflow_supabase_key') || '').trim();
+  const localUrl = (typeof localStorage !== 'undefined' ? localStorage.getItem('leadflow_supabase_url') || '' : '').trim();
+  const localKey = (typeof localStorage !== 'undefined' ? localStorage.getItem('leadflow_supabase_key') || '' : '').trim();
 
   // Prioritize environment variables for production (Vercel) builds
   let key = envKey || localKey;
@@ -57,6 +72,61 @@ export interface SupabaseConfig {
 
 export const getSupabaseConfig = (): SupabaseConfig => {
   return getStoredCredentials();
+};
+
+export const getSupabaseHost = (): string => {
+  const { url } = getStoredCredentials();
+  if (!url) return '';
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url.replace(/^https?:\/\//, '').split('/')[0];
+  }
+};
+
+export const getAuthRedirectUrl = (path = '/dashboard'): string => {
+  if (typeof window === 'undefined') return '';
+  const origin = window.location.origin;
+  return `${origin}${path.startsWith('/') ? path : '/' + path}`;
+};
+
+export const testSupabaseConnection = async (): Promise<{ success: boolean; message: string; host?: string }> => {
+  const client = getSupabase();
+  if (!client) {
+    return {
+      success: false,
+      message: 'Supabase URL and Anon Key are not configured in this environment.',
+    };
+  }
+
+  try {
+    const { error } = await client.from('departments').select('count').limit(1);
+    if (error) {
+      if (error.code === '42P01') {
+        return {
+          success: true,
+          message: 'Connected to Supabase PostgreSQL! (Database tables need initial SQL schema setup).',
+          host: getSupabaseHost(),
+        };
+      }
+      return {
+        success: false,
+        message: `Supabase returned: ${error.message} (Code: ${error.code || 'unknown'})`,
+        host: getSupabaseHost(),
+      };
+    }
+    return {
+      success: true,
+      message: 'Connected successfully to Supabase PostgreSQL database.',
+      host: getSupabaseHost(),
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      message: err?.message || 'Network connection to Supabase failed.',
+      host: getSupabaseHost(),
+    };
+  }
 };
 
 export const saveSupabaseConfig = (url: string, key: string) => {

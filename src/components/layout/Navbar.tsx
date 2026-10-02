@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Profile } from '../../types/crm';
 import { db } from '../../lib/database';
-import { getSupabaseConfig } from '../../lib/supabase';
+import { getSupabaseConfig, getSupabaseHost } from '../../lib/supabase';
 import {
   Search,
   Database,
@@ -185,16 +185,20 @@ export const Navbar: React.FC<Props> = ({
           {/* Supabase Status Pill */}
           <button
             onClick={onOpenSupabase}
-            className={`flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+            className={`flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-all ${
               supabaseConfig.isConfigured
-                ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
-                : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100 shadow-2xs'
+                : 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100 shadow-2xs animate-pulse'
             }`}
-            title="Configure Supabase Database & View SQL Schema"
+            title={
+              supabaseConfig.isConfigured
+                ? `Supabase Connected (${getSupabaseHost() || 'PostgreSQL'}) - Click to view settings`
+                : 'Supabase Disconnected - Click to configure database'
+            }
           >
-            <Database className="w-3.5 h-3.5 text-emerald-600" />
-            <span className="hidden md:inline font-medium">
-              {supabaseConfig.isConfigured ? 'Supabase Active' : 'Supabase SQL'}
+            <Database className={`w-3.5 h-3.5 ${supabaseConfig.isConfigured ? 'text-emerald-600' : 'text-amber-600'}`} />
+            <span className="hidden md:inline">
+              {supabaseConfig.isConfigured ? 'Supabase Connected' : 'Connect Supabase'}
             </span>
           </button>
 
