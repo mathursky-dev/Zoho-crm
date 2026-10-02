@@ -125,6 +125,31 @@ export const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
       if (prop === 'removeChannel') {
         return () => Promise.resolve('ok');
       }
+      if (prop === 'from') {
+        return (table: string) => ({
+          select: () => ({
+            eq: () => ({
+              order: () => Promise.resolve({ data: [], error: new Error('Supabase credentials not configured.') }),
+            }),
+            order: () => Promise.resolve({ data: [], error: new Error('Supabase credentials not configured.') }),
+          }),
+          insert: (_data: any) => ({
+            select: () => ({
+              single: () => Promise.reject(new Error('Supabase credentials not configured. Please configure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.')),
+            }),
+          }),
+          update: (_updates: any) => ({
+            eq: () => ({
+              select: () => ({
+                single: () => Promise.reject(new Error('Supabase credentials not configured.')),
+              }),
+            }),
+          }),
+          delete: () => ({
+            eq: () => Promise.reject(new Error('Supabase credentials not configured.')),
+          }),
+        });
+      }
       return undefined;
     }
     const val = (client as any)[prop];
