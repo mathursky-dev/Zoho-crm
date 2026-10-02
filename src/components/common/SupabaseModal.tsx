@@ -28,8 +28,30 @@ export const SupabaseModal: React.FC<Props> = ({ isOpen, onClose, onConfigChange
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [testMessage, setTestMessage] = useState('');
 
+  const getDetectedProjectUrl = (targetKey: string): string | null => {
+    if (!targetKey) return null;
+    try {
+      const parts = targetKey.trim().split('.');
+      if (parts.length === 3) {
+        const payload = JSON.parse(atob(parts[1]));
+        if (payload?.ref) return `https://${payload.ref}.supabase.co`;
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  };
+
+  const detectedProjectUrl = getDetectedProjectUrl(key) || getDetectedProjectUrl(url);
+
   const handleSave = () => {
-    saveSupabaseConfig(url, key);
+    // If user accidentally put publishable key in URL and we know the real project URL, use it
+    let cleanUrl = url.trim();
+    if ((cleanUrl.startsWith('sb_') || cleanUrl.startsWith('eyJ')) && detectedProjectUrl) {
+      cleanUrl = detectedProjectUrl;
+      setUrl(cleanUrl);
+    }
+    saveSupabaseConfig(cleanUrl, key);
     onConfigChanged();
     handleTestConnection();
   };
@@ -67,21 +89,23 @@ export const SupabaseModal: React.FC<Props> = ({ isOpen, onClose, onConfigChange
         return;
       }
 
-      // Try selecting departments or statuses
-      const { data, error } = await client.from('departments').select('count').limit(1);
+      // Try selecting departments
+      const { error } = await client.from('departments').select('count').limit(1);
 
       if (error) {
-        // If table doesn't exist yet, but connection reached
         if (error.code === '42P01') {
           setTestStatus('success');
-          setTestMessage('Connected to Supabase! (Tables not found yet - please run the SQL Schema from the "SQL Setup" tab in Supabase SQL editor).');
+          setTestMessage('Connected to Supabase! (Tables not found yet - please run the SQL Schema from the "Full SQL Schema" tab in Supabase SQL editor).');
+        } else if (error.code === '42501' || String(error.message).toLowerCase().includes('permission denied')) {
+          setTestStatus('error');
+          setTestMessage('Supabase error: permission denied for table departments. Public "anon" role needs schema & table grants.');
         } else {
           setTestStatus('error');
           setTestMessage(`Supabase error: ${error.message}`);
         }
       } else {
         setTestStatus('success');
-        setTestMessage('Connection successful! Supabase tables and RLS are reachable.');
+        setTestMessage('Connection successful! Supabase tables, permissions, and RLS are active and reachable.');
       }
     } catch (err: any) {
       setTestStatus('error');
@@ -132,7 +156,7 @@ export const SupabaseModal: React.FC<Props> = ({ isOpen, onClose, onConfigChange
             }`}
           >
             <Wrench className="w-3.5 h-3.5" />
-            <span>Fix RLS Error ⚡</span>
+            <span>Fix Permissions & RLS ⚡</span>
           </button>
           <button
             onClick={() => setActiveTab('sql')}
@@ -180,13 +204,36 @@ export const SupabaseModal: React.FC<Props> = ({ isOpen, onClose, onConfigChange
                 <div className="relative">
                   <Database className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                   <input
-                    type="url"
+                    type="text"
                     value={url}
                     onChange={e => setUrl(e.target.value)}
                     placeholder="https://xyzcompany.supabase.co"
                     className="w-full text-xs pl-9 pr-3 py-2 rounded-lg border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-blue-500 font-mono"
                   />
                 </div>
+
+                {/* Warning if user pasted API key instead of Project URL */}
+                {(url.startsWith('sb_') || url.startsWith('eyJ')) && (
+                  <div className="mt-2 p-2.5 bg-amber-50 border border-amber-300 rounded-lg text-xs text-amber-900 space-y-1.5">
+                    <div className="flex items-center space-x-1.5 font-bold">
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                      <span>API Key entered in URL box:</span>
+                    </div>
+                    <p className="text-[11px] text-amber-800 leading-relaxed">
+                      You entered an API Key (<code className="bg-amber-100 font-mono px-1 py-0.5 rounded">{url.slice(0, 24)}...</code>) instead of your Supabase Project URL. Project URLs always start with <code className="bg-amber-100 font-mono px-1 py-0.5 rounded font-bold">https://</code>.
+                    </p>
+                    {detectedProjectUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setUrl(detectedProjectUrl)}
+                        className="inline-flex items-center space-x-1 px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded text-xs transition-colors shadow-2xs"
+                      >
+                        <Check className="w-3 h-3" />
+                        <span>Auto-Fix: Use {detectedProjectUrl}</span>
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div>
@@ -209,19 +256,44 @@ export const SupabaseModal: React.FC<Props> = ({ isOpen, onClose, onConfigChange
               </div>
 
               {testMessage && (
-                <div
-                  className={`p-3 rounded-lg text-xs flex items-center space-x-2 ${
-                    testStatus === 'success'
-                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                      : testStatus === 'error'
-                      ? 'bg-red-50 text-red-800 border border-red-200'
-                      : 'bg-slate-100 text-slate-700'
-                  }`}
-                >
-                  {testStatus === 'success' && <Check className="w-4 h-4 shrink-0 text-emerald-600" />}
-                  {testStatus === 'error' && <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />}
-                  {testStatus === 'testing' && <RefreshCw className="w-4 h-4 shrink-0 animate-spin text-blue-600" />}
-                  <span>{testMessage}</span>
+                <div className="space-y-2">
+                  <div
+                    className={`p-3 rounded-lg text-xs flex items-center space-x-2 ${
+                      testStatus === 'success'
+                        ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                        : testStatus === 'error'
+                        ? 'bg-red-50 text-red-800 border border-red-200'
+                        : 'bg-slate-100 text-slate-700'
+                    }`}
+                  >
+                    {testStatus === 'success' && <Check className="w-4 h-4 shrink-0 text-emerald-600" />}
+                    {testStatus === 'error' && <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />}
+                    {testStatus === 'testing' && <RefreshCw className="w-4 h-4 shrink-0 animate-spin text-blue-600" />}
+                    <span>{testMessage}</span>
+                  </div>
+
+                  {/* 1-Click Fix Helper Box for Permission Denied or RLS Error */}
+                  {testStatus === 'error' && (testMessage.toLowerCase().includes('permission denied') || testMessage.toLowerCase().includes('rls') || testMessage.toLowerCase().includes('departments')) && (
+                    <div className="p-3 bg-amber-50 border border-amber-300 rounded-lg text-xs text-amber-900 space-y-2 shadow-2xs">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-200 pb-2">
+                        <span className="font-bold flex items-center gap-1.5 text-slate-900">
+                          <Wrench className="w-3.5 h-3.5 text-amber-600" />
+                          Fix PostgreSQL Permissions & RLS (10 Seconds)
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleCopyRlsSql}
+                          className="inline-flex items-center space-x-1 px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded text-xs transition-colors shadow-2xs self-start sm:self-auto"
+                        >
+                          {copiedRls ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                          <span>{copiedRls ? 'Copied SQL!' : 'Copy 1-Click Fix SQL'}</span>
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-amber-800 leading-relaxed">
+                        Your Supabase project's <code className="bg-amber-100 px-1 py-0.5 rounded font-mono font-bold">public.departments</code> table has not been granted permissions to the <code className="bg-amber-100 px-1 py-0.5 rounded font-mono font-bold">anon</code> role. Run the 1-Click SQL fix in your <strong>Supabase SQL Editor</strong> to grant full access immediately.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -261,9 +333,9 @@ export const SupabaseModal: React.FC<Props> = ({ isOpen, onClose, onConfigChange
                 <div className="flex items-start space-x-2">
                   <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                   <div>
-                    <strong className="block font-bold">Fixing "new row violates row-level security policy for table leads":</strong>
-                    <span>
-                      Supabase Row-Level Security (RLS) is currently preventing inserts or updates on the <code className="bg-amber-100 px-1 py-0.5 rounded font-mono font-bold">leads</code> table. Run the SQL script below in your Supabase SQL Editor to grant instant insert/update permissions.
+                    <strong className="block font-bold">Fixing "permission denied for table departments" & RLS Errors:</strong>
+                    <span className="leading-relaxed block mt-0.5">
+                      PostgreSQL role <code className="bg-amber-100 px-1 py-0.5 rounded font-mono font-bold">anon</code> requires schema grants (<code className="bg-amber-100 px-1 py-0.5 rounded font-mono font-bold">GRANT ALL ON TABLE</code>) and permissive Row-Level Security policies on <code className="bg-amber-100 px-1 py-0.5 rounded font-mono font-bold">departments</code>, <code className="bg-amber-100 px-1 py-0.5 rounded font-mono font-bold">leads</code>, and <code className="bg-amber-100 px-1 py-0.5 rounded font-mono font-bold">profiles</code>. Run the SQL script below in your Supabase SQL Editor to unblock all tables in 10 seconds.
                     </span>
                   </div>
                 </div>
@@ -271,9 +343,9 @@ export const SupabaseModal: React.FC<Props> = ({ isOpen, onClose, onConfigChange
 
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-xs font-bold uppercase text-slate-700">1-Click SQL RLS Fix</h3>
+                  <h3 className="text-xs font-bold uppercase text-slate-700">1-Click SQL Permissions & RLS Fix</h3>
                   <p className="text-xs text-slate-500">
-                    Instantly creates universal permissive policy for leads, activities, and follow-ups.
+                    Grants full read/write access to public.departments, leads, profiles, and activities.
                   </p>
                 </div>
                 <button
@@ -281,7 +353,7 @@ export const SupabaseModal: React.FC<Props> = ({ isOpen, onClose, onConfigChange
                   className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-lg transition-colors shadow-xs"
                 >
                   {copiedRls ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedRls ? 'Copied RLS Fix!' : 'Copy RLS Fix SQL'}</span>
+                  <span>{copiedRls ? 'Copied SQL!' : 'Copy 1-Click Fix SQL'}</span>
                 </button>
               </div>
 

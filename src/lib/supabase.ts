@@ -643,21 +643,68 @@ END $$;
 `;
 
 export const SUPABASE_FIX_RLS_SQL = `-- ========================================================
--- 1-CLICK RLS FIX FOR LEADFLOW CRM
+-- 1-CLICK PERMISSIONS & RLS FIX FOR LEADFLOW CRM
+-- Fixes: "permission denied for table departments"
 -- Fixes: "new row violates row-level security policy for table leads"
 -- Paste and Run in Supabase SQL Editor:
 -- ========================================================
 
--- 1. Enable RLS and ensure updated_at column exists
+-- 1. Grant Schema Usage and Default Table Privileges to anon and authenticated roles
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL ROUTINES IN SCHEMA public TO anon, authenticated, service_role;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON ROUTINES TO anon, authenticated, service_role;
+
+-- 2. Explicit grants on each CRM table
+GRANT ALL ON TABLE public.departments TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.profiles TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.lead_statuses TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.leads TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.lead_activities TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.lead_assignments TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.followups TO anon, authenticated, service_role;
+
+-- 3. Departments Table RLS: Open for select, insert, update
+ALTER TABLE public.departments ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all on departments" ON public.departments;
+DROP POLICY IF EXISTS "Admins full access on departments" ON public.departments;
+DROP POLICY IF EXISTS "Users can view active departments" ON public.departments;
+CREATE POLICY "Allow all on departments" ON public.departments
+  FOR ALL TO public
+  USING (true)
+  WITH CHECK (true);
+
+-- 4. Lead Statuses Table RLS: Open for select, insert, update
+ALTER TABLE public.lead_statuses ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all on lead_statuses" ON public.lead_statuses;
+DROP POLICY IF EXISTS "Admins full access on lead_statuses" ON public.lead_statuses;
+DROP POLICY IF EXISTS "Users can view active lead_statuses" ON public.lead_statuses;
+CREATE POLICY "Allow all on lead_statuses" ON public.lead_statuses
+  FOR ALL TO public
+  USING (true)
+  WITH CHECK (true);
+
+-- 5. Profiles Table RLS: Open for select, insert, update
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all on profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Admins full access on profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Users can view active profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
+CREATE POLICY "Allow all on profiles" ON public.profiles
+  FOR ALL TO public
+  USING (true)
+  WITH CHECK (true);
+
+-- 6. Leads Table Schema & RLS
 ALTER TABLE public.leads ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMPTZ;
 ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS company_id TEXT DEFAULT 'default_company';
-ALTER TABLE public.lead_activities ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.followups ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.lead_assignments ENABLE ROW LEVEL SECURITY;
 
--- 2. Drop all old/restrictive policies on leads
 DROP POLICY IF EXISTS "Admins full access on leads" ON public.leads;
 DROP POLICY IF EXISTS "Telecallers can view only assigned leads" ON public.leads;
 DROP POLICY IF EXISTS "Telecallers can update only assigned leads" ON public.leads;
@@ -669,13 +716,13 @@ DROP POLICY IF EXISTS "Enable read access for all users" ON public.leads;
 DROP POLICY IF EXISTS "Enable insert for authenticated users only" ON public.leads;
 DROP POLICY IF EXISTS "Enable insert for all users" ON public.leads;
 
--- 3. Create universal permissive policy for leads
 CREATE POLICY "Allow all on leads" ON public.leads
   FOR ALL TO public
   USING (true)
   WITH CHECK (true);
 
--- 4. Clean policies on child tables
+-- 7. Clean policies on child tables (lead_activities, followups, lead_assignments)
+ALTER TABLE public.lead_activities ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Admins full access on lead_activities" ON public.lead_activities;
 DROP POLICY IF EXISTS "Telecallers can view activities for assigned leads" ON public.lead_activities;
 DROP POLICY IF EXISTS "Telecallers can insert activities for assigned leads" ON public.lead_activities;
@@ -685,6 +732,7 @@ CREATE POLICY "Allow all on lead_activities" ON public.lead_activities
   USING (true)
   WITH CHECK (true);
 
+ALTER TABLE public.followups ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Admins full access on followups" ON public.followups;
 DROP POLICY IF EXISTS "Telecallers access own followups" ON public.followups;
 DROP POLICY IF EXISTS "Allow all on followups" ON public.followups;
@@ -693,19 +741,11 @@ CREATE POLICY "Allow all on followups" ON public.followups
   USING (true)
   WITH CHECK (true);
 
+ALTER TABLE public.lead_assignments ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Admins access lead_assignments" ON public.lead_assignments;
 DROP POLICY IF EXISTS "Allow all on lead_assignments" ON public.lead_assignments;
 CREATE POLICY "Allow all on lead_assignments" ON public.lead_assignments
   FOR ALL TO public
   USING (true)
   WITH CHECK (true);
-
--- 5. Grant permissions to anon, authenticated and service_role
-GRANT ALL ON TABLE public.leads TO anon, authenticated, service_role;
-GRANT ALL ON TABLE public.lead_activities TO anon, authenticated, service_role;
-GRANT ALL ON TABLE public.followups TO anon, authenticated, service_role;
-GRANT ALL ON TABLE public.lead_assignments TO anon, authenticated, service_role;
-GRANT ALL ON TABLE public.departments TO anon, authenticated, service_role;
-GRANT ALL ON TABLE public.lead_statuses TO anon, authenticated, service_role;
-GRANT ALL ON TABLE public.profiles TO anon, authenticated, service_role;
 `;

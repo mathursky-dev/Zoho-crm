@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Department } from '../../types/crm';
 import { db } from '../../lib/database';
-import { Building2, Plus, Edit2, Check, X, Shield, Power, RefreshCw, CheckCircle, Trash2, AlertTriangle } from 'lucide-react';
+import { SUPABASE_FIX_RLS_SQL } from '../../lib/supabase';
+import { Building2, Plus, Edit2, Check, X, Shield, Power, RefreshCw, CheckCircle, Trash2, AlertTriangle, AlertCircle, Wrench, Copy } from 'lucide-react';
 
 export const DepartmentMaster: React.FC = () => {
   const [departments, setDepartments] = useState<Department[]>(db.getDepartments(true));
@@ -21,6 +22,7 @@ export const DepartmentMaster: React.FC = () => {
   // Sync state
   const [syncingSupabase, setSyncingSupabase] = useState(false);
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
+  const [copiedRls, setCopiedRls] = useState(false);
 
   const refreshList = async () => {
     await db.syncFromSupabase();
@@ -169,14 +171,47 @@ export const DepartmentMaster: React.FC = () => {
       </div>
 
       {syncFeedback && (
-        <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs px-4 py-2.5 rounded-lg shadow-2xs">
-          <div className="flex items-center space-x-2">
-            <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>{syncFeedback}</span>
+        <div className="space-y-2 animate-in fade-in duration-150">
+          <div
+            className={`flex items-center justify-between text-xs px-4 py-2.5 rounded-lg shadow-2xs ${
+              syncFeedback.toLowerCase().includes('error') || syncFeedback.toLowerCase().includes('failed') || syncFeedback.toLowerCase().includes('permission denied')
+                ? 'bg-rose-50 border border-rose-200 text-rose-800'
+                : 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+            }`}
+          >
+            <div className="flex items-center space-x-2">
+              {syncFeedback.toLowerCase().includes('error') || syncFeedback.toLowerCase().includes('failed') || syncFeedback.toLowerCase().includes('permission denied') ? (
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              ) : (
+                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+              )}
+              <span>{syncFeedback}</span>
+            </div>
+            <button onClick={() => setSyncFeedback(null)} className="text-slate-400 hover:text-slate-600 px-1 font-bold">
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
-          <button onClick={() => setSyncFeedback(null)} className="text-emerald-500 hover:text-emerald-700">
-            <X className="w-3.5 h-3.5" />
-          </button>
+
+          {(syncFeedback.toLowerCase().includes('permission denied') || syncFeedback.toLowerCase().includes('rls')) && (
+            <div className="p-3 bg-amber-50 border border-amber-300 rounded-lg text-xs text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs">
+              <div className="flex items-center space-x-2">
+                <Wrench className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Postgres role "anon" lacks table permissions on public.departments. Run the 1-Click Fix.</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(SUPABASE_FIX_RLS_SQL);
+                  setCopiedRls(true);
+                  setTimeout(() => setCopiedRls(false), 2500);
+                }}
+                className="inline-flex items-center space-x-1 px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded text-xs transition-colors shrink-0 shadow-2xs"
+              >
+                {copiedRls ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                <span>{copiedRls ? 'Copied SQL!' : 'Copy 1-Click Fix SQL'}</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
 

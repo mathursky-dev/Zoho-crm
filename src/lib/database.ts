@@ -1015,8 +1015,16 @@ export class DatabaseService {
         is_active: d.is_active,
       }));
 
-      await supabase.from('departments').upsert(records, { onConflict: 'code' });
-      const { data: refreshed } = await supabase.from('departments').select('*').order('created_at', { ascending: true });
+      const { error: upsertErr } = await supabase.from('departments').upsert(records, { onConflict: 'code' });
+      if (upsertErr) {
+        throw new Error(upsertErr.message);
+      }
+
+      const { data: refreshed, error: selectErr } = await supabase.from('departments').select('*').order('created_at', { ascending: true });
+      if (selectErr) {
+        throw new Error(selectErr.message);
+      }
+
       if (refreshed && refreshed.length > 0) {
         const remoteCodes = new Set(refreshed.map(d => (d.code || '').toUpperCase()));
         const merged: Department[] = refreshed.map(d => ({
@@ -1034,7 +1042,11 @@ export class DatabaseService {
       return { success: true, message: `Successfully synchronized ${this.departments.length} departments to Supabase!`, count: this.departments.length };
     } catch (err: any) {
       console.warn('ensureDepartmentsInSupabase notice:', err);
-      return { success: false, message: err?.message || 'Failed to sync departments to Supabase' };
+      const isPerm = String(err?.message || '').toLowerCase().includes('permission denied');
+      const msg = isPerm
+        ? 'Supabase error: permission denied for table departments. Please run the 1-Click Permissions & RLS Fix SQL in CRM settings.'
+        : (err?.message || 'Failed to sync departments to Supabase');
+      return { success: false, message: msg };
     }
   }
 
