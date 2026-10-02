@@ -211,6 +211,7 @@ CREATE TABLE IF NOT EXISTS public.leads (
   mobile_unlock_count INT DEFAULT 0,
   mobile_unlocked_at TIMESTAMPTZ,
   mobile_unlocked_by TEXT,
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -552,8 +553,9 @@ export const SUPABASE_FIX_RLS_SQL = `-- ========================================
 -- Paste and Run in Supabase SQL Editor:
 -- ========================================================
 
--- 1. Enable RLS
+-- 1. Enable RLS and ensure updated_at column exists
 ALTER TABLE public.leads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 ALTER TABLE public.lead_activities ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.followups ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.lead_assignments ENABLE ROW LEVEL SECURITY;
