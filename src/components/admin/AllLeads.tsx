@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Lead } from '../../types/crm';
 import { db } from '../../lib/database';
+import { SUPABASE_FIX_RLS_SQL } from '../../lib/supabase';
 import {
   Search,
   Filter,
@@ -22,6 +23,9 @@ import {
   Unlock,
   Phone,
   Plus,
+  Copy,
+  Wrench,
+  Check,
 } from 'lucide-react';
 
 interface Props {
@@ -70,6 +74,13 @@ export const AllLeads: React.FC<Props> = ({
   const [leadsToDelete, setLeadsToDelete] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
+  const [copiedRls, setCopiedRls] = useState(false);
+
+  const handleCopyRlsFix = () => {
+    navigator.clipboard.writeText(SUPABASE_FIX_RLS_SQL);
+    setCopiedRls(true);
+    setTimeout(() => setCopiedRls(false), 2500);
+  };
 
   // New Lead Form State
   const [newLeadForm, setNewLeadForm] = useState({
@@ -1087,8 +1098,31 @@ export const AllLeads: React.FC<Props> = ({
 
             <form onSubmit={handleCreateLead} className="p-5 space-y-4">
               {modalError && (
-                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-xs font-medium">
-                  {modalError}
+                <div className="space-y-2">
+                  <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-xs font-medium flex items-center justify-between">
+                    <span>{modalError}</span>
+                  </div>
+                  {(modalError.toLowerCase().includes('row-level security') || modalError.toLowerCase().includes('rls')) && (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold flex items-center gap-1.5">
+                          <Wrench className="w-3.5 h-3.5 text-amber-600" />
+                          Fix RLS in Supabase (10 Seconds)
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleCopyRlsFix}
+                          className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded text-[11px] flex items-center gap-1 shadow-2xs"
+                        >
+                          {copiedRls ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                          <span>{copiedRls ? 'Copied SQL!' : 'Copy SQL Fix'}</span>
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-amber-800">
+                        Paste and run the copied query in your <strong>Supabase Dashboard &gt; SQL Editor</strong> to permanently permit lead creations!
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 

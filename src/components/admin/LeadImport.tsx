@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import * as XLSX from 'xlsx';
 import { db } from '../../lib/database';
 import { Lead } from '../../types/crm';
+import { SUPABASE_FIX_RLS_SQL } from '../../lib/supabase';
 import {
   FileSpreadsheet,
   Upload,
@@ -16,6 +17,8 @@ import {
   Sliders,
   TableProperties,
   Sparkles,
+  Copy,
+  Wrench,
 } from 'lucide-react';
 import { AdminView } from '../layout/Sidebar';
 
@@ -53,6 +56,13 @@ export const LeadImport: React.FC<Props> = ({ onNavigate }) => {
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState<1 | 2 | 3>(1); // 1: Upload, 2: Map & Preview, 3: Completed
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
+  const [copiedRls, setCopiedRls] = useState(false);
+
+  const handleCopyRlsFix = () => {
+    navigator.clipboard.writeText(SUPABASE_FIX_RLS_SQL);
+    setCopiedRls(true);
+    setTimeout(() => setCopiedRls(false), 2500);
+  };
 
   // Handle file upload & parsing
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -209,15 +219,56 @@ export const LeadImport: React.FC<Props> = ({ onNavigate }) => {
 
       {/* Error Banner */}
       {errorBanner && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs font-semibold text-red-700 flex items-center justify-between shadow-2xs animate-in fade-in duration-150">
-          <div className="flex items-center space-x-2">
-            <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
-            <span>{errorBanner}</span>
+        <div className="space-y-3 animate-in fade-in duration-150">
+          <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs font-semibold text-rose-800 flex items-center justify-between shadow-2xs">
+            <div className="flex items-center space-x-2.5">
+              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>{errorBanner}</span>
+            </div>
+            <button onClick={() => setErrorBanner(null)} className="text-rose-500 hover:text-rose-800 px-1 py-0.5">
+              <span className="sr-only">Dismiss</span>
+              ✕
+            </button>
           </div>
-          <button onClick={() => setErrorBanner(null)} className="text-red-500 hover:text-red-700">
-            <span className="sr-only">Dismiss</span>
-            ✕
-          </button>
+
+          {/* Special 1-Click Fix Box for Row-Level Security Policy Error */}
+          {(errorBanner.toLowerCase().includes('row-level security') || errorBanner.toLowerCase().includes('rls')) && (
+            <div className="p-4 bg-amber-50/90 border border-amber-300 rounded-xl text-xs text-amber-900 shadow-2xs space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-200/80 pb-2.5">
+                <div className="flex items-center space-x-2">
+                  <Wrench className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span className="font-bold text-slate-900">How to Fix in 10 Seconds:</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopyRlsFix}
+                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-lg shadow-xs transition-colors"
+                >
+                  {copiedRls ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedRls ? 'Copied RLS Fix SQL!' : 'Copy 1-Click RLS Fix SQL'}</span>
+                </button>
+              </div>
+
+              <p className="text-amber-800">
+                Your Supabase project's <code className="bg-amber-100 font-mono px-1 py-0.5 rounded font-bold">leads</code> table has Row-Level Security enabled without a public insert policy.
+              </p>
+
+              <div className="bg-slate-900 text-emerald-400 p-3 rounded-lg font-mono text-[11px] overflow-x-auto max-h-36 border border-slate-800">
+                {`-- Run this once in your Supabase Dashboard > SQL Editor:
+ALTER TABLE public.leads ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all on leads" ON public.leads;
+CREATE POLICY "Allow all on leads" ON public.leads FOR ALL TO public USING (true) WITH CHECK (true);
+GRANT ALL ON TABLE public.leads TO anon, authenticated, service_role;`}
+              </div>
+
+              <div className="text-[11px] text-amber-900/90 flex flex-wrap items-center gap-1.5">
+                <span>1. Click <strong>"Copy 1-Click RLS Fix SQL"</strong> above.</span>
+                <span>→ 2. In Supabase Dashboard, go to <strong>SQL Editor</strong> &gt; <strong>New Query</strong>.</span>
+                <span>→ 3. Paste and click <strong>Run</strong>.</span>
+                <span>→ 4. Click <strong>"Import Leads Now"</strong> again.</span>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

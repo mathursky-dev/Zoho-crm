@@ -4,24 +4,27 @@ import {
   saveSupabaseConfig,
   clearSupabaseConfig,
   SUPABASE_SQL_SCHEMA,
+  SUPABASE_FIX_RLS_SQL,
   getSupabase,
 } from '../../lib/supabase';
-import { X, Database, Check, Copy, AlertCircle, RefreshCw, Key, ShieldCheck } from 'lucide-react';
+import { X, Database, Check, Copy, AlertCircle, RefreshCw, Key, ShieldCheck, Wrench } from 'lucide-react';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   onConfigChanged: () => void;
+  initialTab?: 'config' | 'sql' | 'fix-rls';
 }
 
-export const SupabaseModal: React.FC<Props> = ({ isOpen, onClose, onConfigChanged }) => {
+export const SupabaseModal: React.FC<Props> = ({ isOpen, onClose, onConfigChanged, initialTab = 'config' }) => {
   if (!isOpen) return null;
 
   const currentConfig = getSupabaseConfig();
   const [url, setUrl] = useState(currentConfig.url);
   const [key, setKey] = useState(currentConfig.key);
-  const [activeTab, setActiveTab] = useState<'config' | 'sql'>('config');
+  const [activeTab, setActiveTab] = useState<'config' | 'sql' | 'fix-rls'>(initialTab);
   const [copied, setCopied] = useState(false);
+  const [copiedRls, setCopiedRls] = useState(false);
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [testMessage, setTestMessage] = useState('');
 
@@ -43,7 +46,13 @@ export const SupabaseModal: React.FC<Props> = ({ isOpen, onClose, onConfigChange
   const handleCopySql = () => {
     navigator.clipboard.writeText(SUPABASE_SQL_SCHEMA);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleCopyRlsSql = () => {
+    navigator.clipboard.writeText(SUPABASE_FIX_RLS_SQL);
+    setCopiedRls(true);
+    setTimeout(() => setCopiedRls(false), 2000);
   };
 
   const handleTestConnection = async () => {
@@ -115,6 +124,17 @@ export const SupabaseModal: React.FC<Props> = ({ isOpen, onClose, onConfigChange
             Connection Settings
           </button>
           <button
+            onClick={() => setActiveTab('fix-rls')}
+            className={`pb-3 px-4 text-xs font-semibold border-b-2 transition-colors flex items-center space-x-1.5 ${
+              activeTab === 'fix-rls'
+                ? 'border-amber-600 text-amber-600'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <Wrench className="w-3.5 h-3.5" />
+            <span>Fix RLS Error ⚡</span>
+          </button>
+          <button
             onClick={() => setActiveTab('sql')}
             className={`pb-3 px-4 text-xs font-semibold border-b-2 transition-colors flex items-center space-x-1.5 ${
               activeTab === 'sql'
@@ -123,13 +143,13 @@ export const SupabaseModal: React.FC<Props> = ({ isOpen, onClose, onConfigChange
             }`}
           >
             <ShieldCheck className="w-3.5 h-3.5" />
-            <span>SQL Schema & RLS Setup</span>
+            <span>Full SQL Schema</span>
           </button>
         </div>
 
         {/* Tab Content */}
         <div className="p-6 max-h-[70vh] overflow-y-auto space-y-4">
-          {activeTab === 'config' ? (
+          {activeTab === 'config' && (
             <div className="space-y-4">
               <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
                 <p className="font-semibold mb-1">Dual-Mode Architecture:</p>
@@ -216,7 +236,57 @@ export const SupabaseModal: React.FC<Props> = ({ isOpen, onClose, onConfigChange
                 </div>
               </div>
             </div>
-          ) : (
+          )}
+
+          {activeTab === 'fix-rls' && (
+            <div className="space-y-3">
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900">
+                <div className="flex items-start space-x-2">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="block font-bold">Fixing "new row violates row-level security policy for table leads":</strong>
+                    <span>
+                      Supabase Row-Level Security (RLS) is currently preventing inserts or updates on the <code className="bg-amber-100 px-1 py-0.5 rounded font-mono font-bold">leads</code> table. Run the SQL script below in your Supabase SQL Editor to grant instant insert/update permissions.
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xs font-bold uppercase text-slate-700">1-Click SQL RLS Fix</h3>
+                  <p className="text-xs text-slate-500">
+                    Instantly creates universal permissive policy for leads, activities, and follow-ups.
+                  </p>
+                </div>
+                <button
+                  onClick={handleCopyRlsSql}
+                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-lg transition-colors shadow-xs"
+                >
+                  {copiedRls ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedRls ? 'Copied RLS Fix!' : 'Copy RLS Fix SQL'}</span>
+                </button>
+              </div>
+
+              <div className="relative">
+                <pre className="bg-slate-900 text-emerald-400 p-4 rounded-lg text-[11px] font-mono leading-relaxed overflow-x-auto max-h-[300px] border border-slate-800">
+                  {SUPABASE_FIX_RLS_SQL}
+                </pre>
+              </div>
+
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600 space-y-1">
+                <p><strong>Instructions:</strong></p>
+                <ol className="list-decimal list-inside space-y-0.5">
+                  <li>Click <strong>Copy RLS Fix SQL</strong> above.</li>
+                  <li>In your Supabase Dashboard, open <strong>SQL Editor</strong> &gt; <strong>New Query</strong>.</li>
+                  <li>Paste the SQL script and click <strong>Run</strong>.</li>
+                  <li>Return here and re-import or add your leads!</li>
+                </ol>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'sql' && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div>
