@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { db } from '../../lib/database';
 import { Followup, Lead } from '../../types/crm';
 import {
@@ -19,6 +19,14 @@ interface Props {
 
 export const MyFollowups: React.FC<Props> = ({ onViewLead, onUpdateLead }) => {
   const [filter, setFilter] = useState<'all' | 'today' | 'overdue' | 'callback'>('all');
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    const unsub = db.subscribeToChanges(() => {
+      setTick(t => t + 1);
+    });
+    return unsub;
+  }, []);
 
   const followups = db.getFollowups(filter);
 

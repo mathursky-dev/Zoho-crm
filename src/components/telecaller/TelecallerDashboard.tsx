@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { db } from '../../lib/database';
 import {
   PhoneCall,
@@ -26,6 +26,15 @@ export const TelecallerDashboard: React.FC<Props> = ({
   onNavigate,
   onStartCallingQueue,
 }) => {
+  const [, setVersion] = useState<number>(0);
+
+  useEffect(() => {
+    const unsub = db.subscribeToChanges(() => {
+      setVersion((v: number) => v + 1);
+    });
+    return () => unsub();
+  }, []);
+
   const user = db.getCurrentUser();
   const metrics = db.getTelecallerMetrics(user?.id);
   const myLeads = db.getLeads(); // strictly filtered to current user

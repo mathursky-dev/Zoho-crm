@@ -42,13 +42,34 @@ export const Navbar: React.FC<Props> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
 
   const supabaseConfig = getSupabaseConfig();
 
-  // Search results
-  const searchResults = searchTerm.trim()
-    ? db.getLeads({ search: searchTerm }).slice(0, 6)
-    : [];
+  // Query live Supabase data on input change with debounce
+  React.useEffect(() => {
+    const term = searchTerm.trim();
+    if (!term) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    setIsSearching(true);
+    const timer = setTimeout(async () => {
+      try {
+        const results = await db.searchLeadsLive(term);
+        setSearchResults(results);
+      } catch (err) {
+        console.error('Navbar live search error:', err);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 200);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
   const handleSelectSearchResult = (leadId: string) => {
     setSearchTerm('');

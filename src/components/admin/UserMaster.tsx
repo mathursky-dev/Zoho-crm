@@ -29,6 +29,10 @@ export const UserMaster: React.FC = () => {
 
   React.useEffect(() => {
     refreshList();
+    const unsub = db.subscribeToChanges(() => {
+      setUsers(db.getUsers(true) as any);
+    });
+    return unsub;
   }, []);
 
   const handleSyncToSupabase = async () => {

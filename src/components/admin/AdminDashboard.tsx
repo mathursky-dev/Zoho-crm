@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { db } from '../../lib/database';
 import {
   Users2,
@@ -25,6 +25,15 @@ interface Props {
 }
 
 export const AdminDashboard: React.FC<Props> = ({ onNavigate, onSelectLead, onOpenWipeData }) => {
+  const [, setVersion] = useState<number>(0);
+
+  useEffect(() => {
+    const unsub = db.subscribeToChanges(() => {
+      setVersion((v: number) => v + 1);
+    });
+    return () => unsub();
+  }, []);
+
   const metrics = db.getAdminDashboardMetrics();
   const unassignedLeads = db.getLeads({ onlyUnassigned: true }).slice(0, 5);
   const departments = db.getDepartments();

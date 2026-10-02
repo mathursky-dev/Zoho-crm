@@ -29,6 +29,10 @@ export const DepartmentMaster: React.FC = () => {
 
   React.useEffect(() => {
     refreshList();
+    const unsub = db.subscribeToChanges(() => {
+      setDepartments(db.getDepartments(true));
+    });
+    return unsub;
   }, []);
 
   const handleSyncToSupabase = async () => {

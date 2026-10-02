@@ -36,6 +36,15 @@ export const ManualAssignment: React.FC<Props> = ({ onNavigate }) => {
   const [targetUserId, setTargetUserId] = useState('');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [, setVersion] = useState(0);
+
+  // Subscribe to live Supabase Realtime updates
+  React.useEffect(() => {
+    const unsub = db.subscribeToChanges(() => {
+      setVersion(v => v + 1);
+    });
+    return () => unsub();
+  }, []);
 
   // Leads for the chosen department or all departments
   const leads = db.getLeads({

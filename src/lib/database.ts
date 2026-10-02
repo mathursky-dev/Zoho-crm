@@ -625,6 +625,9 @@ export class DatabaseService {
     return DatabaseService.instance;
   }
 
+  private listeners: Set<() => void> = new Set();
+  private realtimeChannel: any = null;
+
   private init() {
     this.currentUser = null;
     this.users = [...DEFAULT_USERS];
@@ -637,53 +640,249 @@ export class DatabaseService {
       // ignore
     }
 
-    try {
-      const savedDepts = localStorage.getItem('leadflow_local_departments');
-      if (savedDepts) {
-        const parsed = JSON.parse(savedDepts);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const codes = new Set(this.departments.map(d => (d.code || '').toUpperCase()));
-          parsed.forEach((d: Department) => {
-            if (d && d.code && !codes.has(d.code.toUpperCase())) {
-              this.departments.push({
-                ...d,
-                id: LEGACY_DEPT_MAP[d.id] || (isValidUUID(d.id) ? d.id : generateUUID()),
-              });
-              codes.add(d.code.toUpperCase());
-            }
-          });
-        }
+    // Set up Realtime subscriptions on initialization
+    this.setupRealtimeSubscriptions();
+  }
+
+  // --- REACTIVE SUBSCRIBER PATTERN ---
+  public subscribeToChanges(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  public notifyListeners() {
+    this.listeners.forEach(fn => {
+      try {
+        fn();
+      } catch (err) {
+        console.error('Listener notification error:', err);
       }
-    } catch {
-      // ignore
+    });
+  }
+
+  // --- SUPABASE REALTIME LIVE SYNCHRONIZATION ---
+  public setupRealtimeSubscriptions() {
+    const supabase = getSupabase();
+    if (!supabase) return;
+
+    if (this.realtimeChannel) {
+      try {
+        supabase.removeChannel(this.realtimeChannel);
+      } catch {
+        // ignore
+      }
+      this.realtimeChannel = null;
     }
 
     try {
-      const savedLeads = localStorage.getItem('leadflow_local_leads');
-      if (savedLeads) {
-        const parsed = JSON.parse(savedLeads);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          this.leads = parsed;
-        }
-      }
-    } catch {
-      // ignore
+      this.realtimeChannel = supabase
+        .channel('leadflow-realtime-crm')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'leads' },
+          async (payload) => {
+            console.log('[Realtime] Lead change detected:', payload.eventType);
+            await this.syncLeadsFromSupabase();
+            this.notifyListeners();
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'lead_assignments' },
+          async () => {
+            await this.syncAssignmentsFromSupabase();
+            this.notifyListeners();
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'lead_activities' },
+          async () => {
+            await this.syncActivitiesFromSupabase();
+            this.notifyListeners();
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'departments' },
+          async () => {
+            await this.syncDepartmentsFromSupabase();
+            this.notifyListeners();
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'lead_statuses' },
+          async () => {
+            await this.syncStatusesFromSupabase();
+            this.notifyListeners();
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'profiles' },
+          async () => {
+            await this.syncProfilesFromSupabase();
+            this.notifyListeners();
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'followups' },
+          async () => {
+            this.notifyListeners();
+          }
+        )
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            console.log('[Supabase Realtime] Connected and listening for CRM updates.');
+          }
+        });
+    } catch (err) {
+      console.warn('Realtime subscription setup notice:', err);
     }
   }
 
-  public saveLocalDepartments() {
+  public mapLeadsFromSupabase(leadsData: any[]): Lead[] {
+    return leadsData.map(l => {
+      const dept = this.departments.find(
+        d => d.id === l.department_id || sanitizeUUID(d.id) === sanitizeUUID(l.department_id)
+      );
+      const user = this.users.find(u => u.id === l.assigned_to);
+      return {
+        ...l,
+        department_id: sanitizeUUID(l.department_id) || l.department_id,
+        department_name: dept?.name || l.department_name || 'General',
+        assigned_to_name: user?.full_name || l.assigned_to_name || (l.assigned_to ? 'Assigned' : null),
+        mobile_unlock_count: l.mobile_unlock_count || 0,
+        created_at: l.created_at || new Date().toISOString(),
+      };
+    });
+  }
+
+  public async syncLeadsFromSupabase(): Promise<void> {
+    const supabase = getSupabase();
+    if (!supabase) return;
     try {
-      localStorage.setItem('leadflow_local_departments', JSON.stringify(this.departments));
-    } catch {
-      // ignore
+      const { data, error } = await supabase
+        .from('leads')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (!error && data) {
+        this.leads = this.mapLeadsFromSupabase(data);
+      }
+    } catch (err) {
+      console.warn('Error fetching leads from Supabase:', err);
     }
   }
 
-  public saveLocalLeads() {
+  public async syncDepartmentsFromSupabase(): Promise<void> {
+    const supabase = getSupabase();
+    if (!supabase) return;
     try {
-      localStorage.setItem('leadflow_local_leads', JSON.stringify(this.leads));
-    } catch {
-      // ignore
+      const { data, error } = await supabase
+        .from('departments')
+        .select('*')
+        .order('created_at', { ascending: true });
+      if (!error && data && data.length > 0) {
+        const remoteCodes = new Set(data.map(d => (d.code || '').toUpperCase()));
+        const merged: Department[] = data.map(d => ({
+          ...d,
+          id: LEGACY_DEPT_MAP[d.id] || (isValidUUID(d.id) ? d.id : generateUUID()),
+        }));
+        DEFAULT_DEPARTMENTS.forEach(def => {
+          if (!remoteCodes.has(def.code.toUpperCase())) {
+            merged.push(def);
+            remoteCodes.add(def.code.toUpperCase());
+          }
+        });
+        this.departments = merged;
+      }
+    } catch (err) {
+      console.warn('Error fetching departments from Supabase:', err);
+    }
+  }
+
+  public async syncStatusesFromSupabase(): Promise<void> {
+    const supabase = getSupabase();
+    if (!supabase) return;
+    try {
+      const { data, error } = await supabase
+        .from('lead_statuses')
+        .select('*')
+        .order('display_order', { ascending: true });
+      if (!error && data && data.length > 0) {
+        this.statuses = data.map(s => ({
+          ...s,
+          id: LEGACY_STATUS_MAP[s.id] || (isValidUUID(s.id) ? s.id : generateUUID()),
+        }));
+      }
+    } catch (err) {
+      console.warn('Error fetching statuses from Supabase:', err);
+    }
+  }
+
+  public async syncProfilesFromSupabase(): Promise<void> {
+    const supabase = getSupabase();
+    if (!supabase) return;
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('created_at', { ascending: true });
+      if (!error && data) {
+        const remoteIds = new Set(data.map(p => p.id));
+        const merged: Profile[] = data.map(p => ({
+          ...p,
+          is_active: p.is_active !== undefined ? p.is_active : (p.active !== undefined ? p.active : true),
+        }));
+        DEFAULT_USERS.forEach(def => {
+          if (!remoteIds.has(def.id)) {
+            merged.push(def);
+          }
+        });
+        this.users = merged;
+        if (this.currentUser) {
+          const fresh = this.users.find(u => u.id === this.currentUser!.id);
+          if (fresh) this.currentUser = fresh;
+        }
+      }
+    } catch (err) {
+      console.warn('Error fetching profiles from Supabase:', err);
+    }
+  }
+
+  public async syncActivitiesFromSupabase(): Promise<void> {
+    const supabase = getSupabase();
+    if (!supabase) return;
+    try {
+      const { data, error } = await supabase
+        .from('lead_activities')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (!error && data) {
+        this.activities = data;
+      }
+    } catch (err) {
+      console.warn('Error fetching activities from Supabase:', err);
+    }
+  }
+
+  public async syncAssignmentsFromSupabase(): Promise<void> {
+    const supabase = getSupabase();
+    if (!supabase) return;
+    try {
+      const { data, error } = await supabase
+        .from('lead_assignments')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (!error && data) {
+        this.leadAssignments = data;
+      }
+    } catch (err) {
+      console.warn('Error fetching assignments from Supabase:', err);
     }
   }
 
@@ -697,129 +896,25 @@ export class DatabaseService {
 
     try {
       // 1. Fetch departments
-      const { data: depts, error: deptsErr } = await supabase
-        .from('departments')
-        .select('*')
-        .order('created_at', { ascending: true });
-      if (!deptsErr && depts && depts.length > 0) {
-        const remoteCodes = new Set(depts.map(d => (d.code || '').toUpperCase()));
-        const remoteNames = new Set(depts.map(d => (d.name || '').toLowerCase()));
-        const merged: Department[] = depts.map(d => ({
-          ...d,
-          id: LEGACY_DEPT_MAP[d.id] || (isValidUUID(d.id) ? d.id : generateUUID()),
-        }));
-
-        // Include default standard departments (like Astro oc, Ayur oc) so they are always present
-        DEFAULT_DEPARTMENTS.forEach(def => {
-          if (!remoteCodes.has(def.code.toUpperCase()) && !remoteNames.has(def.name.toLowerCase())) {
-            merged.push(def);
-            remoteCodes.add(def.code.toUpperCase());
-            remoteNames.add(def.name.toLowerCase());
-          }
-        });
-
-        // Also preserve locally created custom departments that are not in remote Supabase yet
-        this.departments.forEach(localDept => {
-          if (localDept.code && !remoteCodes.has(localDept.code.toUpperCase()) && !remoteNames.has(localDept.name.toLowerCase())) {
-            merged.push(localDept);
-            remoteCodes.add(localDept.code.toUpperCase());
-            remoteNames.add(localDept.name.toLowerCase());
-          }
-        });
-
-        this.departments = merged;
-        this.saveLocalDepartments();
-      } else if (!deptsErr && (!depts || depts.length === 0)) {
-        await this.ensureDepartmentsInSupabase();
-      }
+      await this.syncDepartmentsFromSupabase();
 
       // 2. Fetch statuses
-      const { data: stats, error: statsErr } = await supabase
-        .from('lead_statuses')
-        .select('*')
-        .order('display_order', { ascending: true });
-      if (!statsErr && stats && stats.length > 0) {
-        this.statuses = stats.map(s => ({
-          ...s,
-          id: LEGACY_STATUS_MAP[s.id] || (isValidUUID(s.id) ? s.id : generateUUID()),
-        }));
-      } else if (!statsErr && (!stats || stats.length === 0)) {
-        await this.ensureStatusesInSupabase();
-      }
+      await this.syncStatusesFromSupabase();
 
       // 3. Fetch profiles
-      const { data: profs, error: profsErr } = await supabase
-        .from('profiles')
-        .select('*')
-        .order('created_at', { ascending: true });
-      if (!profsErr && profs) {
-        const remoteIds = new Set(profs.map(p => p.id));
-        const remoteEmails = new Set(profs.map(p => (p.email || '').toLowerCase()));
-        const merged: Profile[] = profs.map(p => ({
-          ...p,
-          is_active: p.is_active !== undefined ? p.is_active : (p.active !== undefined ? p.active : true),
-        }));
-
-        // Include default accounts (superadmin, admin, manoj, suraj, jeetu) so they are always present
-        DEFAULT_USERS.forEach(def => {
-          if (!remoteIds.has(def.id) && !remoteEmails.has(def.email.toLowerCase())) {
-            merged.push(def);
-          }
-        });
-
-        this.users = merged;
-
-        // Update currentUser if in list
-        if (this.currentUser) {
-          const fresh = this.users.find(u => u.id === this.currentUser!.id);
-          if (fresh) this.currentUser = fresh;
-        }
-      }
+      await this.syncProfilesFromSupabase();
 
       // 4. Fetch leads (strictly filtered by RLS if telecaller)
-      const { data: leadsData, error: leadsErr } = await supabase
-        .from('leads')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (!leadsErr && leadsData) {
-        const remoteIds = new Set(leadsData.map(l => l.id));
-        const remoteCodes = new Set(leadsData.map(l => l.lead_code));
-        const mappedRemote: Lead[] = leadsData.map(l => {
-          const dept = this.departments.find(d => d.id === l.department_id || sanitizeUUID(d.id) === sanitizeUUID(l.department_id));
-          const user = this.users.find(u => u.id === l.assigned_to);
-          return {
-            ...l,
-            department_id: sanitizeUUID(l.department_id) || l.department_id,
-            department_name: dept?.name || l.department_name || 'General',
-            assigned_to_name: user?.full_name || l.assigned_to_name || (l.assigned_to ? 'Assigned' : null),
-            mobile_unlock_count: l.mobile_unlock_count || 0,
-            created_at: l.created_at || new Date().toISOString(),
-          };
-        });
-
-        // Retain any locally imported leads that aren't yet in Supabase
-        const localOnly = this.leads.filter(l => !remoteIds.has(l.id) && !remoteCodes.has(l.lead_code));
-        this.leads = [...localOnly, ...mappedRemote];
-        this.saveLocalLeads();
-      }
+      await this.syncLeadsFromSupabase();
 
       // 5. Fetch activities
-      const { data: acts, error: actsErr } = await supabase
-        .from('lead_activities')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (!actsErr && acts) {
-        this.activities = acts;
-      }
+      await this.syncActivitiesFromSupabase();
 
       // 6. Fetch assignments
-      const { data: assigns, error: assignErr } = await supabase
-        .from('lead_assignments')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (!assignErr && assigns) {
-        this.leadAssignments = assigns;
-      }
+      await this.syncAssignmentsFromSupabase();
+
+      // Notify all UI components of fresh data
+      this.notifyListeners();
     } catch (err) {
       console.warn('Supabase data synchronization warning:', err);
     } finally {
@@ -933,7 +1028,7 @@ export class DatabaseService {
           }
         });
         this.departments = merged;
-        this.saveLocalDepartments();
+        this.notifyListeners();
       }
       return { success: true, message: `Successfully synchronized ${this.departments.length} departments to Supabase!`, count: this.departments.length };
     } catch (err: any) {
@@ -1373,7 +1468,7 @@ export class DatabaseService {
     }
 
     this.departments.push(newDept);
-    this.saveLocalDepartments();
+    this.notifyListeners();
     return { department: newDept };
   }
 
@@ -1481,7 +1576,7 @@ export class DatabaseService {
         } else {
           this.departments.push(finalDept);
         }
-        this.saveLocalDepartments();
+        this.notifyListeners();
         return { department: finalDept };
       } catch (err: any) {
         console.warn('Supabase updateDepartment fallback locally:', err);
@@ -1493,7 +1588,7 @@ export class DatabaseService {
     } else {
       this.departments.push(mergedDept);
     }
-    this.saveLocalDepartments();
+    this.notifyListeners();
     return { department: mergedDept };
   }
 
@@ -1511,7 +1606,7 @@ export class DatabaseService {
     }
 
     const removed = this.departments.splice(index, 1)[0];
-    this.saveLocalDepartments();
+    this.notifyListeners();
 
     const supabase = getSupabase();
     if (supabase) {
@@ -2449,7 +2544,7 @@ export class DatabaseService {
 
       // Re-fetch all updated data from Supabase (single source of truth)
       const { data: refreshedLeads } = await supabase.from('leads').select('*').order('created_at', { ascending: false });
-      if (refreshedLeads) this.leads = refreshedLeads;
+      if (refreshedLeads) this.leads = this.mapLeadsFromSupabase(refreshedLeads);
 
       const { data: refreshedAssigns } = await supabase.from('lead_assignments').select('*').order('created_at', { ascending: false });
       if (refreshedAssigns) this.leadAssignments = refreshedAssigns;
@@ -2457,6 +2552,7 @@ export class DatabaseService {
       const { data: refreshedActs } = await supabase.from('lead_activities').select('*').order('created_at', { ascending: false });
       if (refreshedActs) this.activities = refreshedActs;
 
+      this.notifyListeners();
       return { successCount: leadIds.length, message: `Successfully assigned ${leadIds.length} lead(s) to ${targetUser.full_name}.` };
     }
 
@@ -2532,7 +2628,192 @@ export class DatabaseService {
     };
   }
 
-  // --- EXCEL / CSV IMPORT ---
+  // --- SINGLE LEAD CREATION (MANUAL ENTRY) ---
+  public async createLead(data: {
+    customer_name: string;
+    mobile: string;
+    alt_mobile?: string;
+    city?: string;
+    state?: string;
+    department_id?: string;
+    product?: string;
+    amount?: number;
+    source?: string;
+    remark?: string;
+    status?: string;
+  }): Promise<{ success: boolean; lead?: Lead; error?: string }> {
+    const user = this.getCurrentUser();
+    const cleanName = (data.customer_name || '').trim();
+    const cleanMobile = (data.mobile || '').replace(/\D/g, '').trim();
+
+    if (!cleanName) {
+      return { success: false, error: 'Customer name is required.' };
+    }
+    if (!cleanMobile || cleanMobile.length < 10) {
+      return { success: false, error: 'A valid 10-digit mobile number is required.' };
+    }
+
+    const supabase = getSupabase();
+    if (!supabase) {
+      return { success: false, error: 'Supabase database is not connected.' };
+    }
+
+    // Check duplicate mobile in existing leads
+    const isDupe = this.leads.some(l => l.mobile.replace(/\D/g, '') === cleanMobile);
+    if (isDupe) {
+      return { success: false, error: `A lead with mobile number ${cleanMobile} already exists.` };
+    }
+
+    // Ensure departments exist so foreign key constraint passes
+    try {
+      await this.ensureDepartmentsInSupabase();
+    } catch {
+      // ignore
+    }
+
+    const leadId = generateUUID();
+    const leadCode = `LD-${Date.now().toString().slice(-6)}-${Math.floor(100 + Math.random() * 900)}`;
+    const now = new Date().toISOString();
+    const deptId = sanitizeUUID(data.department_id);
+
+    const payload = {
+      id: leadId,
+      lead_code: leadCode,
+      customer_name: cleanName,
+      mobile: cleanMobile,
+      alt_mobile: data.alt_mobile ? data.alt_mobile.replace(/\D/g, '') : null,
+      city: data.city?.trim() || null,
+      state: data.state?.trim() || null,
+      department_id: deptId,
+      product: data.product?.trim() || 'General Product',
+      amount: Number(data.amount) || 0,
+      source: data.source?.trim() || 'Manual Entry',
+      status: data.status || 'Untouched',
+      remark: data.remark?.trim() || 'Manually created lead',
+      assigned_to: null,
+      created_at: now,
+    };
+
+    let { data: inserted, error: insErr } = await supabase.from('leads').insert([payload]).select();
+
+    if (insErr && (insErr.code === '23503' || String(insErr.message).includes('department_id'))) {
+      const fallback = { ...payload, department_id: null };
+      const retry = await supabase.from('leads').insert([fallback]).select();
+      insErr = retry.error;
+      inserted = retry.data;
+    }
+
+    if (insErr) {
+      console.error('Failed to create lead in Supabase:', insErr);
+      return { success: false, error: insErr.message || 'Database error creating lead.' };
+    }
+
+    // Record creation audit trail
+    await supabase.from('lead_activities').insert([{
+      id: generateUUID(),
+      lead_id: leadId,
+      user_id: sanitizeUUID(user?.id),
+      user_name: user?.full_name || 'Admin',
+      status: data.status || 'Untouched',
+      remark: `Lead created manually by ${user?.full_name || 'Admin'}`,
+      created_at: now,
+    }]);
+
+    // Synchronize latest leads
+    await this.syncLeadsFromSupabase();
+    await this.syncActivitiesFromSupabase();
+    this.notifyListeners();
+
+    const created = this.leads.find(l => l.id === leadId);
+    return { success: true, lead: created };
+  }
+
+  // --- DELETE LEADS (SINGLE & BULK PERMANENT DELETION) ---
+  public async deleteLeads(leadIds: string[]): Promise<{ success: boolean; count: number; error?: string }> {
+    const user = this.getCurrentUser();
+    if (!user || user.role !== 'admin') {
+      return { success: false, count: 0, error: 'Unauthorized: Only administrators can delete leads.' };
+    }
+
+    const validIds = leadIds.filter(id => isValidUUID(id));
+    if (validIds.length === 0) {
+      return { success: false, count: 0, error: 'No valid lead IDs provided.' };
+    }
+
+    const supabase = getSupabase();
+    if (!supabase) {
+      return { success: false, count: 0, error: 'Supabase database is not connected.' };
+    }
+
+    try {
+      // 1. Delete associated child records first to satisfy foreign keys
+      await supabase.from('lead_activities').delete().in('lead_id', validIds);
+      await supabase.from('lead_assignments').delete().in('lead_id', validIds);
+      await supabase.from('followups').delete().in('lead_id', validIds);
+
+      // 2. Delete leads
+      const { error: delErr } = await supabase.from('leads').delete().in('id', validIds);
+      if (delErr) {
+        console.error('Failed to delete leads from Supabase:', delErr);
+        return { success: false, count: 0, error: delErr.message };
+      }
+
+      // 3. Re-fetch leads from Supabase and notify
+      await this.syncLeadsFromSupabase();
+      await this.syncActivitiesFromSupabase();
+      await this.syncAssignmentsFromSupabase();
+      this.notifyListeners();
+
+      return { success: true, count: validIds.length };
+    } catch (err: any) {
+      console.error('deleteLeads error:', err);
+      return { success: false, count: 0, error: err?.message || 'Database error deleting leads.' };
+    }
+  }
+
+  // --- LIVE SUPABASE CUSTOMER MOBILE / NAME SEARCH ---
+  public async searchLeadsLive(query: string): Promise<Lead[]> {
+    const clean = (query || '').trim();
+    if (!clean) return [];
+
+    const user = this.getCurrentUser();
+    const supabase = getSupabase();
+
+    if (!supabase) {
+      return this.getLeads({ search: clean }).slice(0, 8);
+    }
+
+    try {
+      const qDigits = clean.replace(/\D/g, '');
+      let req = supabase
+        .from('leads')
+        .select('*');
+
+      // Telecallers can only see their own assigned leads per RLS
+      if (user && user.role === 'telecaller') {
+        req = req.eq('assigned_to', user.id);
+      }
+
+      // Search across name, mobile, alternate mobile, lead code, city
+      if (qDigits.length >= 3) {
+        req = req.or(`mobile.ilike.%${qDigits}%,alt_mobile.ilike.%${qDigits}%,customer_name.ilike.%${clean}%,lead_code.ilike.%${clean}%,city.ilike.%${clean}%`);
+      } else {
+        req = req.or(`customer_name.ilike.%${clean}%,lead_code.ilike.%${clean}%,city.ilike.%${clean}%`);
+      }
+
+      const { data, error } = await req.limit(8).order('created_at', { ascending: false });
+      if (error || !data) {
+        return this.getLeads({ search: clean }).slice(0, 8);
+      }
+
+      return this.mapLeadsFromSupabase(data);
+    } catch (err) {
+      console.warn('Live search error, falling back to local cache:', err);
+      return this.getLeads({ search: clean }).slice(0, 8);
+    }
+  }
+
+  // --- EXCEL / CSV IMPORT (PERMANENT SUPABASE BATCH INSERTION) ---
   public async importLeads(
     rows: any[],
     departmentId: string,
@@ -2553,19 +2834,12 @@ export class DatabaseService {
     const transformMap = new Map<string, TransformRule>();
     this.importFieldMappings.forEach(m => transformMap.set(m.field_key, m.transform_rule));
 
-    // Find highest current lead number
-    let maxNumber = 1000;
-    this.leads.forEach(l => {
-      const num = parseInt(l.lead_code.replace(/\D/g, ''), 10);
-      if (!isNaN(num) && num > maxNumber) {
-        maxNumber = num;
-      }
-    });
-
     const mobileCol = columnMap['mobile'] || columnMap['Mobile'] || columnMap['Mobile Number'] || columnMap['Phone'] || columnMap['phone'] || '';
     const nameCol = columnMap['customer_name'] || columnMap['Customer Name'] || columnMap['Name'] || columnMap['customer'] || columnMap['name'] || '';
 
-    rows.forEach(row => {
+    const baseTimestamp = Date.now();
+
+    rows.forEach((row, idx) => {
       const rawMobileVal = mobileCol ? row[mobileCol] : '';
       const rawNameVal = nameCol ? row[nameCol] : '';
 
@@ -2586,8 +2860,8 @@ export class DatabaseService {
       }
       existingMobiles.add(cleanMobile);
 
-      maxNumber++;
-      const leadCode = `LD-${maxNumber}`;
+      // Collision-free unique lead code
+      const leadCode = `LD-${(baseTimestamp + idx).toString().slice(-6)}-${Math.floor(100 + Math.random() * 900)}`;
 
       // Alternate mobile
       const altCol = columnMap['alt_mobile'] || columnMap['alternate_mobile'] || '';
@@ -2685,7 +2959,7 @@ export class DatabaseService {
         assigned_to_name: null,
         remark,
         custom_fields: Object.keys(custom_fields).length > 0 ? custom_fields : undefined,
-        created_at: new Date().toISOString(),
+        created_at: new Date(baseTimestamp + idx * 10).toISOString(),
         assigned_at: null,
         last_activity_at: null,
       };
@@ -2694,7 +2968,11 @@ export class DatabaseService {
     });
 
     const supabase = getSupabase();
-    if (supabase && newLeads.length > 0) {
+    if (!supabase) {
+      throw new Error('Supabase database is not connected. Please verify your Supabase configuration.');
+    }
+
+    if (newLeads.length > 0) {
       // First ensure default & custom departments exist in Supabase so foreign key references succeed
       try {
         await this.ensureDepartmentsInSupabase();
@@ -2727,56 +3005,32 @@ export class DatabaseService {
         };
       });
 
-      let { error: insErr } = await supabase.from('leads').insert(payload);
+      // Insert in chunks of 50 to avoid request timeout or payload limits
+      const chunkSize = 50;
+      let insertedCount = 0;
 
-      // If foreign key constraint failed, retry with department_id: null so imported leads are NEVER lost!
-      if (insErr && (insErr.code === '23503' || String(insErr.message).includes('department_id'))) {
-        console.warn('Foreign key issue on department_id, retrying without department FK:', insErr);
-        const fallbackPayload = payload.map(p => ({ ...p, department_id: null }));
-        const retry = await supabase.from('leads').insert(fallbackPayload);
-        insErr = retry.error;
-      }
+      for (let i = 0; i < payload.length; i += chunkSize) {
+        const chunk = payload.slice(i, i + chunkSize);
+        let { error: chunkErr } = await supabase.from('leads').insert(chunk);
 
-      if (insErr) {
-        console.error('Failed to insert leads into Supabase, saving to local state:', insErr);
-        // CRITICAL: NEVER discard newLeads!
-        this.leads = [...newLeads, ...this.leads];
-        this.saveLocalLeads();
-      } else {
-        // Re-fetch all leads from Supabase (single source of truth)
-        const { data: refreshedLeads, error: refErr } = await supabase
-          .from('leads')
-          .select('*')
-          .order('created_at', { ascending: false });
-
-        if (!refErr && refreshedLeads && refreshedLeads.length > 0) {
-          const remoteIds = new Set(refreshedLeads.map(l => l.id));
-          const remoteCodes = new Set(refreshedLeads.map(l => l.lead_code));
-          const mappedRemote: Lead[] = refreshedLeads.map(l => {
-            const d = this.departments.find(dep => dep.id === l.department_id || sanitizeUUID(dep.id) === sanitizeUUID(l.department_id));
-            const u = this.users.find(usr => usr.id === l.assigned_to);
-            return {
-              ...l,
-              department_id: sanitizeUUID(l.department_id) || l.department_id,
-              department_name: d?.name || l.department_name || 'General',
-              assigned_to_name: u?.full_name || l.assigned_to_name || (l.assigned_to ? 'Assigned' : null),
-              mobile_unlock_count: l.mobile_unlock_count || 0,
-              created_at: l.created_at || new Date().toISOString(),
-            };
-          });
-
-          // Also preserve any newly created leads that may not have completed indexing yet
-          const uncommitted = newLeads.filter(l => !remoteIds.has(l.id) && !remoteCodes.has(l.lead_code));
-          this.leads = [...uncommitted, ...mappedRemote];
-          this.saveLocalLeads();
-        } else {
-          this.leads = [...newLeads, ...this.leads];
-          this.saveLocalLeads();
+        // Fallback if department FK fails
+        if (chunkErr && (chunkErr.code === '23503' || String(chunkErr.message).includes('department_id'))) {
+          console.warn('Foreign key issue on department_id, retrying chunk without department FK:', chunkErr);
+          const fallbackChunk = chunk.map(p => ({ ...p, department_id: null }));
+          const retry = await supabase.from('leads').insert(fallbackChunk);
+          chunkErr = retry.error;
         }
+
+        if (chunkErr) {
+          console.error('Batch insert chunk error in Supabase:', chunkErr);
+          throw new Error(`Failed to save leads in Supabase: ${chunkErr.message}`);
+        }
+        insertedCount += chunk.length;
       }
-    } else {
-      this.leads = [...newLeads, ...this.leads];
-      this.saveLocalLeads();
+
+      // Re-fetch all fresh leads from Supabase (single source of truth)
+      await this.syncLeadsFromSupabase();
+      this.notifyListeners();
     }
 
     return {
@@ -2790,14 +3044,23 @@ export class DatabaseService {
 
   // --- LEAD UPDATE & ACTIVITY HISTORY ---
   /**
-   * Updates lead and creates an immutable LeadActivity history record!
-   * Telecallers can only update leads assigned to them.
+   * Updates lead and creates an immutable LeadActivity history record in Supabase!
+   * Supports updating customer details, status, remarks, followups, and order information.
    */
   public async updateLead(
     leadId: string,
     updates: {
-      status: StandardLeadStatus | string;
-      remark: string;
+      status?: StandardLeadStatus | string;
+      remark?: string;
+      customer_name?: string;
+      mobile?: string;
+      alt_mobile?: string | null;
+      city?: string | null;
+      state?: string | null;
+      department_id?: string | null;
+      product?: string;
+      amount?: number;
+      source?: string;
       followup_date?: string | null;
       callback_date?: string | null;
       order_amount?: number | null;
@@ -2826,16 +3089,26 @@ export class DatabaseService {
     const now = new Date().toISOString();
 
     const updatePayload: Record<string, any> = {
-      status: updates.status,
-      remark: updates.remark || currentLead.remark,
-      followup_date: updates.followup_date !== undefined ? updates.followup_date : currentLead.followup_date,
-      callback_date: updates.callback_date !== undefined ? updates.callback_date : currentLead.callback_date,
       last_activity_at: now,
-      order_amount: updates.order_amount !== undefined ? updates.order_amount : currentLead.order_amount,
-      order_product: updates.order_product !== undefined ? updates.order_product : currentLead.order_product,
-      order_quantity: updates.order_quantity !== undefined ? updates.order_quantity : currentLead.order_quantity,
-      payment_status: updates.payment_status !== undefined ? updates.payment_status : currentLead.payment_status,
     };
+
+    if (updates.status !== undefined) updatePayload.status = updates.status;
+    if (updates.remark !== undefined) updatePayload.remark = updates.remark;
+    if (updates.customer_name !== undefined) updatePayload.customer_name = updates.customer_name.trim();
+    if (updates.mobile !== undefined) updatePayload.mobile = updates.mobile.replace(/\D/g, '').trim();
+    if (updates.alt_mobile !== undefined) updatePayload.alt_mobile = updates.alt_mobile;
+    if (updates.city !== undefined) updatePayload.city = updates.city;
+    if (updates.state !== undefined) updatePayload.state = updates.state;
+    if (updates.department_id !== undefined) updatePayload.department_id = sanitizeUUID(updates.department_id);
+    if (updates.product !== undefined) updatePayload.product = updates.product;
+    if (updates.amount !== undefined) updatePayload.amount = updates.amount;
+    if (updates.source !== undefined) updatePayload.source = updates.source;
+    if (updates.followup_date !== undefined) updatePayload.followup_date = updates.followup_date;
+    if (updates.callback_date !== undefined) updatePayload.callback_date = updates.callback_date;
+    if (updates.order_amount !== undefined) updatePayload.order_amount = updates.order_amount;
+    if (updates.order_product !== undefined) updatePayload.order_product = updates.order_product;
+    if (updates.order_quantity !== undefined) updatePayload.order_quantity = updates.order_quantity;
+    if (updates.payment_status !== undefined) updatePayload.payment_status = updates.payment_status;
 
     const supabase = getSupabase();
     if (supabase && isValidUUID(leadId)) {
@@ -2852,8 +3125,8 @@ export class DatabaseService {
         lead_id: leadId,
         user_id: sanitizeUUID(user.id),
         user_name: user.full_name,
-        status: updates.status,
-        remark: updates.remark || 'Status updated',
+        status: updates.status || currentLead.status,
+        remark: updates.remark || 'Lead details updated',
         created_at: now,
       }]);
 
@@ -2874,18 +3147,14 @@ export class DatabaseService {
       // Re-fetch lead and activities from Supabase (single source of truth)
       const { data: refreshedLead } = await supabase.from('leads').select('*').eq('id', leadId).maybeSingle();
       if (refreshedLead) {
-        this.leads[index] = {
-          ...refreshedLead,
-          department_id: sanitizeUUID(refreshedLead.department_id) || refreshedLead.department_id,
-        };
+        const mapped = this.mapLeadsFromSupabase([refreshedLead])[0];
+        this.leads[index] = mapped;
       }
 
-      const { data: refreshedActs } = await supabase.from('lead_activities').select('*').order('created_at', { ascending: false });
-      if (refreshedActs) {
-        this.activities = refreshedActs;
-      }
+      await this.syncActivitiesFromSupabase();
+      this.notifyListeners();
 
-      return { success: true, lead: refreshedLead || this.leads[index] };
+      return { success: true, lead: this.leads[index] };
     }
 
     const updatedLead: Lead = {
@@ -2893,6 +3162,7 @@ export class DatabaseService {
       ...updatePayload,
     };
     this.leads[index] = updatedLead;
+    this.notifyListeners();
     return { success: true, lead: updatedLead };
   }
 

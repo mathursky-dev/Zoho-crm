@@ -50,6 +50,14 @@ export const MyLeads: React.FC<Props> = ({
     setStatus(initialStatusFilter);
   }, [initialStatusFilter]);
 
+  // Subscribe to live Supabase Realtime updates
+  useEffect(() => {
+    const unsub = db.subscribeToChanges(() => {
+      setVersion(v => v + 1);
+    });
+    return () => unsub();
+  }, []);
+
   const statuses = db.getStatuses();
 
   // Strict RLS: db.getLeads() automatically restricts to assigned_to === currentUser.id for telecaller role!

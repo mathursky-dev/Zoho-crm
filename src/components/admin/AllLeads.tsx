@@ -21,6 +21,7 @@ import {
   Trash2,
   Unlock,
   Phone,
+  Plus,
 } from 'lucide-react';
 
 interface Props {
@@ -52,11 +53,37 @@ export const AllLeads: React.FC<Props> = ({
     setRefreshCount(c => c + 1);
   };
 
+  // Subscribe to live Supabase Realtime updates
   React.useEffect(() => {
+    const unsub = db.subscribeToChanges(() => {
+      setRefreshCount(c => c + 1);
+    });
     db.syncFromSupabase().then(() => {
       setRefreshCount(c => c + 1);
     });
+    return () => unsub();
   }, []);
+
+  // Modal States
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [leadsToDelete, setLeadsToDelete] = useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
+
+  // New Lead Form State
+  const [newLeadForm, setNewLeadForm] = useState({
+    customer_name: '',
+    mobile: '',
+    alt_mobile: '',
+    city: '',
+    state: '',
+    department_id: '',
+    product: '',
+    amount: '',
+    source: 'Direct Inbound',
+    remark: '',
+  });
 
   // Search & Filter state
   const [search, setSearch] = useState('');
@@ -168,6 +195,76 @@ export const AllLeads: React.FC<Props> = ({
     setIsAssignModalOpen(false);
     setTargetUserId('');
     setTimeout(() => setAssignMessage(null), 4500);
+  };
+
+  const handleCreateLead = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setModalError(null);
+    if (!newLeadForm.customer_name.trim()) {
+      setModalError('Customer Name is required.');
+      return;
+    }
+    if (!newLeadForm.mobile.trim() || newLeadForm.mobile.replace(/\D/g, '').length < 10) {
+      setModalError('Please enter a valid 10-digit mobile number.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    const res = await db.createLead({
+      customer_name: newLeadForm.customer_name.trim(),
+      mobile: newLeadForm.mobile.trim(),
+      alt_mobile: newLeadForm.alt_mobile.trim() || undefined,
+      city: newLeadForm.city.trim() || undefined,
+      state: newLeadForm.state.trim() || undefined,
+      department_id: newLeadForm.department_id || undefined,
+      product: newLeadForm.product.trim() || undefined,
+      amount: newLeadForm.amount ? Number(newLeadForm.amount) : 0,
+      source: newLeadForm.source.trim() || 'Manual Entry',
+      remark: newLeadForm.remark.trim() || undefined,
+    });
+
+    setIsSubmitting(false);
+    if (res.success) {
+      setIsCreateModalOpen(false);
+      setNewLeadForm({
+        customer_name: '',
+        mobile: '',
+        alt_mobile: '',
+        city: '',
+        state: '',
+        department_id: '',
+        product: '',
+        amount: '',
+        source: 'Direct Inbound',
+        remark: '',
+      });
+      setAssignMessage(`Lead created successfully in Supabase!`);
+      setTimeout(() => setAssignMessage(null), 4000);
+    } else {
+      setModalError(res.error || 'Failed to create lead in database.');
+    }
+  };
+
+  const handleDeleteRequest = (ids: string[]) => {
+    setLeadsToDelete(ids);
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (leadsToDelete.length === 0) return;
+    setIsSubmitting(true);
+    const res = await db.deleteLeads(leadsToDelete);
+    setIsSubmitting(false);
+    setIsDeleteModalOpen(false);
+    if (res.success) {
+      setSelectedIds(prev => prev.filter(id => !leadsToDelete.includes(id)));
+      setAssignMessage(`Permanently deleted ${res.count} lead(s) from Supabase.`);
+      setTimeout(() => setAssignMessage(null), 4000);
+    } else {
+      setAssignMessage(`Error deleting leads: ${res.error}`);
+      setTimeout(() => setAssignMessage(null), 5000);
+    }
+    setLeadsToDelete([]);
   };
 
   const getStatusBadge = (st: string) => {
@@ -317,6 +414,15 @@ export const AllLeads: React.FC<Props> = ({
         {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-2">
           <button
+            onClick={() => setIsCreateModalOpen(true)}
+            className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors shadow-xs"
+            title="Create a new customer lead manually"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Add Lead</span>
+          </button>
+
+          <button
             onClick={handleRefresh}
             disabled={syncing}
             className="inline-flex items-center space-x-1.5 px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg border border-slate-300 shadow-2xs transition-colors disabled:opacity-50"
@@ -327,13 +433,23 @@ export const AllLeads: React.FC<Props> = ({
           </button>
 
           {selectedIds.length > 0 && (
-            <button
-              onClick={() => setIsAssignModalOpen(true)}
-              className="inline-flex items-center space-x-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors shadow-xs"
-            >
-              <UserCheck className="w-4 h-4" />
-              <span>Assign Selected Leads ({selectedIds.length})</span>
-            </button>
+            <>
+              <button
+                onClick={() => setIsAssignModalOpen(true)}
+                className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition-colors shadow-xs"
+              >
+                <UserCheck className="w-3.5 h-3.5" />
+                <span>Assign ({selectedIds.length})</span>
+              </button>
+              <button
+                onClick={() => handleDeleteRequest(selectedIds)}
+                className="inline-flex items-center space-x-1.5 px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg transition-colors shadow-xs"
+                title="Delete selected leads permanently from Supabase"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete ({selectedIds.length})</span>
+              </button>
+            </>
           )}
 
           <div className="flex items-center border border-slate-300 rounded-lg overflow-hidden bg-white text-xs font-semibold">
@@ -820,7 +936,7 @@ export const AllLeads: React.FC<Props> = ({
                         {new Date(lead.created_at).toLocaleString()}
                       </td>
 
-                      {/* Actions: View Details | Update Status */}
+                      {/* Actions: View Details | Update Status | Delete */}
                       <td className="p-3 text-right">
                         <div className="flex items-center justify-end space-x-1">
                           <button
@@ -836,6 +952,13 @@ export const AllLeads: React.FC<Props> = ({
                             title="Update Status / Note"
                           >
                             <Edit className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteRequest([lead.id])}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                            title="Delete Lead Permanently"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </td>
@@ -938,6 +1061,245 @@ export const AllLeads: React.FC<Props> = ({
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold rounded-lg shadow-xs transition-colors"
                 >
                   Confirm & Assign Leads
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CREATE LEAD MODAL (MANUAL SINGLE ENTRY DIRECT TO SUPABASE) */}
+      {isCreateModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-xl overflow-hidden border border-slate-200 my-8">
+            <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-base">Add New Lead</h3>
+                <p className="text-xs text-slate-400">Directly inserts lead into Supabase database as Unassigned</p>
+              </div>
+              <button
+                onClick={() => setIsCreateModalOpen(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateLead} className="p-5 space-y-4">
+              {modalError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-xs font-medium">
+                  {modalError}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Customer Name <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newLeadForm.customer_name}
+                    onChange={e => setNewLeadForm({ ...newLeadForm, customer_name: e.target.value })}
+                    placeholder="e.g. Rahul Verma"
+                    className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Primary Mobile (10 digits) <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    value={newLeadForm.mobile}
+                    onChange={e => setNewLeadForm({ ...newLeadForm, mobile: e.target.value })}
+                    placeholder="e.g. 9876543210"
+                    className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Alternate Mobile
+                  </label>
+                  <input
+                    type="tel"
+                    value={newLeadForm.alt_mobile}
+                    onChange={e => setNewLeadForm({ ...newLeadForm, alt_mobile: e.target.value })}
+                    placeholder="e.g. 9812345678"
+                    className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Department
+                  </label>
+                  <select
+                    value={newLeadForm.department_id}
+                    onChange={e => setNewLeadForm({ ...newLeadForm, department_id: e.target.value })}
+                    className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 bg-white focus:ring-2 focus:ring-blue-500 font-medium"
+                  >
+                    <option value="">-- General / Select Department --</option>
+                    {departments.map(d => (
+                      <option key={d.id} value={d.id}>{d.name} ({d.code})</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    City
+                  </label>
+                  <input
+                    type="text"
+                    value={newLeadForm.city}
+                    onChange={e => setNewLeadForm({ ...newLeadForm, city: e.target.value })}
+                    placeholder="e.g. Mumbai"
+                    className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    State
+                  </label>
+                  <input
+                    type="text"
+                    value={newLeadForm.state}
+                    onChange={e => setNewLeadForm({ ...newLeadForm, state: e.target.value })}
+                    placeholder="e.g. Maharashtra"
+                    className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Product / Service
+                  </label>
+                  <input
+                    type="text"
+                    value={newLeadForm.product}
+                    onChange={e => setNewLeadForm({ ...newLeadForm, product: e.target.value })}
+                    placeholder="e.g. Home Loan"
+                    className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Estimated Amount (₹)
+                  </label>
+                  <input
+                    type="number"
+                    value={newLeadForm.amount}
+                    onChange={e => setNewLeadForm({ ...newLeadForm, amount: e.target.value })}
+                    placeholder="0"
+                    className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Lead Source
+                  </label>
+                  <select
+                    value={newLeadForm.source}
+                    onChange={e => setNewLeadForm({ ...newLeadForm, source: e.target.value })}
+                    className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 bg-white focus:ring-2 focus:ring-blue-500 font-medium"
+                  >
+                    <option value="Direct Inbound">Direct Inbound</option>
+                    <option value="Website Enquiry">Website Enquiry</option>
+                    <option value="Referral">Referral</option>
+                    <option value="Facebook Ads">Facebook Ads</option>
+                    <option value="Google Ads">Google Ads</option>
+                    <option value="Cold Call">Cold Call</option>
+                    <option value="Excel Import">Excel Import</option>
+                    <option value="Walk-in">Walk-in</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Initial Remark / Notes
+                </label>
+                <textarea
+                  rows={2}
+                  value={newLeadForm.remark}
+                  onChange={e => setNewLeadForm({ ...newLeadForm, remark: e.target.value })}
+                  placeholder="Additional notes about customer requirement..."
+                  className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsCreateModalOpen(false)}
+                  className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs transition-colors disabled:opacity-50"
+                >
+                  {isSubmitting ? 'Creating in Supabase...' : 'Create Lead'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE CONFIRMATION MODAL */}
+      {isDeleteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200">
+            <div className="bg-rose-600 text-white px-5 py-4 flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Trash2 className="w-5 h-5" />
+                <h3 className="font-bold text-base">Permanently Delete Lead(s)</h3>
+              </div>
+              <button
+                onClick={() => setIsDeleteModalOpen(false)}
+                className="text-rose-100 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <p className="text-xs text-slate-700 leading-relaxed">
+                Are you sure you want to permanently delete <strong>{leadsToDelete.length} lead(s)</strong>?
+              </p>
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-800 space-y-1">
+                <p className="font-semibold">⚠️ Database Write Notice:</p>
+                <p>
+                  This action will permanently delete these records, along with their activity histories, assignments, and follow-ups from the Supabase production database. This cannot be undone.
+                </p>
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsDeleteModalOpen(false)}
+                  className="px-3.5 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={handleConfirmDelete}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-bold rounded-lg shadow-xs transition-colors"
+                >
+                  {isSubmitting ? 'Deleting...' : 'Confirm Permanent Deletion'}
                 </button>
               </div>
             </div>

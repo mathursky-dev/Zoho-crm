@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import * as XLSX from 'xlsx';
 import { db } from '../../lib/database';
+import { Lead } from '../../types/crm';
 import {
   FileSpreadsheet,
   Upload,
@@ -46,6 +47,7 @@ export const LeadImport: React.FC<Props> = ({ onNavigate }) => {
     importedCount: number;
     duplicateMobiles: string[];
     skippedRows: number;
+    createdLeads?: Lead[];
   } | null>(null);
 
   const [loading, setLoading] = useState(false);

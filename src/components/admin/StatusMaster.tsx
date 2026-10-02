@@ -46,6 +46,10 @@ export const StatusMaster: React.FC = () => {
 
   React.useEffect(() => {
     refresh();
+    const unsub = db.subscribeToChanges(() => {
+      setStatuses(db.getStatuses(true));
+    });
+    return unsub;
   }, []);
 
   const handleSyncToSupabase = async () => {

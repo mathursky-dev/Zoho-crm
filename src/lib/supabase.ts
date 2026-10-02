@@ -8,22 +8,35 @@ const getStoredCredentials = () => {
   const localUrl = (localStorage.getItem('leadflow_supabase_url') || '').trim();
   const localKey = (localStorage.getItem('leadflow_supabase_key') || '').trim();
 
-  let url = localUrl || envUrl;
-  const key = localKey || envKey;
+  // Prioritize environment variables for production (Vercel) builds
+  let key = envKey || localKey;
+  let url = envUrl || localUrl;
 
-  // Auto-recovery: If url is missing or doesn't start with http/https, but key is a Supabase JWT with project ref
-  if ((!url || (!url.startsWith('http://') && !url.startsWith('https://'))) && key) {
+  // Auto-recovery: If url is missing, invalid, a placeholder, or a publishable key string,
+  // extract the Supabase project ref directly from the Anon Key JWT payload.
+  const isHttpUrl = url.startsWith('http://') || url.startsWith('https://');
+  const isPlaceholderUrl = url.includes('your-project');
+  
+  if ((!isHttpUrl || isPlaceholderUrl || url.startsWith('sb_') || url.startsWith('eyJ')) && (key || url)) {
     try {
-      const parts = key.split('.');
-      if (parts.length === 3) {
-        const payload = JSON.parse(atob(parts[1]));
-        if (payload?.ref) {
-          url = `https://${payload.ref}.supabase.co`;
+      const targetToken = key.startsWith('eyJ') ? key : (url.startsWith('eyJ') ? url : '');
+      if (targetToken) {
+        const parts = targetToken.split('.');
+        if (parts.length === 3) {
+          const payload = JSON.parse(atob(parts[1]));
+          if (payload?.ref) {
+            url = `https://${payload.ref}.supabase.co`;
+          }
         }
       }
     } catch {
       // ignore
     }
+  }
+
+  // If user entered just "project-ref" (e.g. cfrpxzhmhfpwhteavznu) without protocol
+  if (!url.startsWith('http://') && !url.startsWith('https://') && url.length > 5 && !url.includes(' ') && !url.startsWith('sb_')) {
+    url = `https://${url.replace('.supabase.co', '')}.supabase.co`;
   }
 
   const isValidUrl = url.startsWith('http://') || url.startsWith('https://');
@@ -71,6 +84,11 @@ export const initClient = (): SupabaseClient | null => {
           autoRefreshToken: true,
           detectSessionInUrl: true,
         },
+        realtime: {
+          params: {
+            eventsPerSecond: 10,
+          },
+        },
       });
       return supabaseInstance;
     } catch (err) {
@@ -106,6 +124,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- 2. Departments Table
 CREATE TABLE IF NOT EXISTS public.departments (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  company_id TEXT DEFAULT 'default_company',
   name TEXT NOT NULL,
   code TEXT NOT NULL UNIQUE,
   description TEXT,
@@ -116,6 +135,7 @@ CREATE TABLE IF NOT EXISTS public.departments (
 -- 3. Profiles (Users) Table linked to Supabase Auth
 CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  company_id TEXT DEFAULT 'default_company',
   email TEXT NOT NULL,
   full_name TEXT NOT NULL,
   username TEXT,
@@ -130,6 +150,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 -- 4. Lead Statuses Master (All Standard Dispositions)
 CREATE TABLE IF NOT EXISTS public.lead_statuses (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  company_id TEXT DEFAULT 'default_company',
   name TEXT NOT NULL UNIQUE,
   color TEXT NOT NULL DEFAULT '#64748b',
   is_active BOOLEAN NOT NULL DEFAULT true,
@@ -140,6 +161,7 @@ CREATE TABLE IF NOT EXISTS public.lead_statuses (
 -- 5. Leads Table
 CREATE TABLE IF NOT EXISTS public.leads (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  company_id TEXT DEFAULT 'default_company',
   lead_code TEXT NOT NULL UNIQUE,
   customer_name TEXT NOT NULL,
   mobile TEXT NOT NULL,
@@ -172,6 +194,7 @@ CREATE TABLE IF NOT EXISTS public.leads (
 -- 6. Lead Activities (History Audit Trail)
 CREATE TABLE IF NOT EXISTS public.lead_activities (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  company_id TEXT DEFAULT 'default_company',
   lead_id UUID NOT NULL REFERENCES public.leads(id) ON DELETE CASCADE,
   user_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
   user_name TEXT NOT NULL,
@@ -183,6 +206,7 @@ CREATE TABLE IF NOT EXISTS public.lead_activities (
 -- 7. Lead Assignments Log
 CREATE TABLE IF NOT EXISTS public.lead_assignments (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  company_id TEXT DEFAULT 'default_company',
   lead_id UUID NOT NULL REFERENCES public.leads(id) ON DELETE CASCADE,
   previous_user_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
   assigned_to UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
@@ -195,6 +219,7 @@ CREATE TABLE IF NOT EXISTS public.lead_assignments (
 -- 8. Followups Table
 CREATE TABLE IF NOT EXISTS public.followups (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  company_id TEXT DEFAULT 'default_company',
   lead_id UUID NOT NULL REFERENCES public.leads(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   followup_type TEXT NOT NULL CHECK (followup_type IN ('Follow-up', 'Call Back')),
@@ -203,6 +228,23 @@ CREATE TABLE IF NOT EXISTS public.followups (
   remarks TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- ========================================================
+-- ENABLE SUPABASE REALTIME REPLICATION
+-- ========================================================
+DO $$
+BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.leads;
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.departments;
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.profiles;
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.lead_statuses;
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.lead_assignments;
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.lead_activities;
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.followups;
+EXCEPTION WHEN OTHERS THEN
+  -- Table already in publication or permission notice
+  NULL;
+END $$;
 
 -- ========================================================
 -- ROW LEVEL SECURITY (RLS) POLICIES
@@ -232,61 +274,88 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Departments RLS
+DROP POLICY IF EXISTS "Admins full access on departments" ON public.departments;
+DROP POLICY IF EXISTS "Users can view active departments" ON public.departments;
 CREATE POLICY "Admins full access on departments" ON public.departments
-  FOR ALL USING (public.is_admin() OR auth.uid() IS NULL);
+  FOR ALL USING (public.is_admin() OR auth.uid() IS NULL)
+  WITH CHECK (public.is_admin() OR auth.uid() IS NULL);
 CREATE POLICY "Users can view active departments" ON public.departments
   FOR SELECT USING (true);
 
 -- Lead Statuses RLS
+DROP POLICY IF EXISTS "Admins full access on lead_statuses" ON public.lead_statuses;
+DROP POLICY IF EXISTS "Users can view active lead_statuses" ON public.lead_statuses;
 CREATE POLICY "Admins full access on lead_statuses" ON public.lead_statuses
-  FOR ALL USING (public.is_admin() OR auth.uid() IS NULL);
+  FOR ALL USING (public.is_admin() OR auth.uid() IS NULL)
+  WITH CHECK (public.is_admin() OR auth.uid() IS NULL);
 CREATE POLICY "Users can view active lead_statuses" ON public.lead_statuses
   FOR SELECT USING (true);
 
 -- Profiles RLS
+DROP POLICY IF EXISTS "Admins full access on profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Users can view active profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 CREATE POLICY "Admins full access on profiles" ON public.profiles
-  FOR ALL USING (public.is_admin() OR auth.uid() IS NULL);
+  FOR ALL USING (public.is_admin() OR auth.uid() IS NULL)
+  WITH CHECK (public.is_admin() OR auth.uid() IS NULL);
 CREATE POLICY "Users can view active profiles" ON public.profiles
   FOR SELECT USING (true);
 CREATE POLICY "Users can update own profile" ON public.profiles
   FOR UPDATE USING (id = auth.uid());
 
--- Leads RLS: Admin full access; Telecaller can ONLY view & update assigned leads!
+-- Leads RLS: Admin full access; Telecaller can view & update assigned leads; anyone can insert new leads
+DROP POLICY IF EXISTS "Admins full access on leads" ON public.leads;
+DROP POLICY IF EXISTS "Telecallers can view only assigned leads" ON public.leads;
+DROP POLICY IF EXISTS "Telecallers can update only assigned leads" ON public.leads;
+DROP POLICY IF EXISTS "Allow insert leads" ON public.leads;
+DROP POLICY IF EXISTS "Admins delete leads" ON public.leads;
+
 CREATE POLICY "Admins full access on leads" ON public.leads
-  FOR ALL USING (public.is_admin() OR auth.uid() IS NULL);
+  FOR ALL USING (public.is_admin() OR auth.uid() IS NULL)
+  WITH CHECK (public.is_admin() OR auth.uid() IS NULL);
 
 CREATE POLICY "Telecallers can view only assigned leads" ON public.leads
-  FOR SELECT USING (assigned_to = auth.uid());
+  FOR SELECT USING (assigned_to = auth.uid() OR public.is_admin() OR auth.uid() IS NULL);
 
 CREATE POLICY "Telecallers can update only assigned leads" ON public.leads
-  FOR UPDATE USING (assigned_to = auth.uid())
-  WITH CHECK (assigned_to = auth.uid());
+  FOR UPDATE USING (assigned_to = auth.uid() OR public.is_admin() OR auth.uid() IS NULL)
+  WITH CHECK (assigned_to = auth.uid() OR public.is_admin() OR auth.uid() IS NULL);
+
+CREATE POLICY "Allow insert leads" ON public.leads
+  FOR INSERT WITH CHECK (true);
 
 -- Lead Activities RLS
+DROP POLICY IF EXISTS "Admins full access on lead_activities" ON public.lead_activities;
+DROP POLICY IF EXISTS "Telecallers can view activities for assigned leads" ON public.lead_activities;
+DROP POLICY IF EXISTS "Telecallers can insert activities for assigned leads" ON public.lead_activities;
 CREATE POLICY "Admins full access on lead_activities" ON public.lead_activities
-  FOR ALL USING (public.is_admin() OR auth.uid() IS NULL);
+  FOR ALL USING (public.is_admin() OR auth.uid() IS NULL)
+  WITH CHECK (public.is_admin() OR auth.uid() IS NULL);
 
 CREATE POLICY "Telecallers can view activities for assigned leads" ON public.lead_activities
   FOR SELECT USING (
-    EXISTS (SELECT 1 FROM public.leads WHERE leads.id = lead_activities.lead_id AND leads.assigned_to = auth.uid())
+    EXISTS (SELECT 1 FROM public.leads WHERE leads.id = lead_activities.lead_id AND (leads.assigned_to = auth.uid() OR public.is_admin() OR auth.uid() IS NULL))
   );
 
 CREATE POLICY "Telecallers can insert activities for assigned leads" ON public.lead_activities
-  FOR INSERT WITH CHECK (
-    user_id = auth.uid() AND
-    EXISTS (SELECT 1 FROM public.leads WHERE leads.id = lead_activities.lead_id AND leads.assigned_to = auth.uid())
-  );
+  FOR INSERT WITH CHECK (true);
 
 -- Followups RLS
+DROP POLICY IF EXISTS "Admins full access on followups" ON public.followups;
+DROP POLICY IF EXISTS "Telecallers access own followups" ON public.followups;
 CREATE POLICY "Admins full access on followups" ON public.followups
-  FOR ALL USING (public.is_admin() OR auth.uid() IS NULL);
+  FOR ALL USING (public.is_admin() OR auth.uid() IS NULL)
+  WITH CHECK (public.is_admin() OR auth.uid() IS NULL);
 
 CREATE POLICY "Telecallers access own followups" ON public.followups
-  FOR ALL USING (user_id = auth.uid());
+  FOR ALL USING (user_id = auth.uid() OR public.is_admin() OR auth.uid() IS NULL)
+  WITH CHECK (user_id = auth.uid() OR public.is_admin() OR auth.uid() IS NULL);
 
 -- Lead Assignments Log RLS
+DROP POLICY IF EXISTS "Admins access lead_assignments" ON public.lead_assignments;
 CREATE POLICY "Admins access lead_assignments" ON public.lead_assignments
-  FOR ALL USING (public.is_admin() OR auth.uid() IS NULL);
+  FOR ALL USING (public.is_admin() OR auth.uid() IS NULL)
+  WITH CHECK (public.is_admin() OR auth.uid() IS NULL);
 
 -- Seed All 18 Standard Statuses with valid PostgreSQL UUIDs
 INSERT INTO public.lead_statuses (id, name, color, display_order)
